@@ -1,6 +1,6 @@
 # JSON API addon for Redaxo 5
 
-Redaxo 4.x addon to provide a read only JSON api for category and article content.
+Redaxo **5.x** addon to provide a read only JSON api for category and article content.
 
 ## Description
 
@@ -8,6 +8,13 @@ This addon works identical to the Redaxo 4.x version "redaxo4_api_json" except t
 
 Please read the [README](https://github.com/ThomasKWD/redaxo4_api_json/blob/master/README.md) there!
 
+## Requirements
+
+### Software
+
+* PHP 7.1
+* Redaxo 5.x (Only tested with Redaxo 5.6.0)
+* Mod Rewrite access (optional).
 
 ## Know issues
 
