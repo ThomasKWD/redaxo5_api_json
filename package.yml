@@ -1,0 +1,26 @@
+# Alle hier gesetzten Werte können über `$addon->getProperty($key)` abgefragt werden
+
+package: redaxo5_api_json # Pflichtfeld
+version: '0.1.3' # Pflichtfeld
+author: Thomas Kühne
+supportpage: https://github.com/ThomasKWD/redaxo5_api_json
+
+# Seiten
+# get code from demo_addon when needed
+
+# Abhängigkeiten
+# Anforderungen ans System oder anderere AddOns, um dieses AddOn installieren oder update zu können
+requires:
+    redaxo: '^5.6.0' # benötigt mindestens REDAXO 5.1
+    # packages:
+        # media_manager: '^2.0.1' # benötigt mindestens das Addon Media Manager 2.0.1
+    php:
+        version: '>=5.6' # benötigt mindestens PHP 5.6
+        # extensions: [gd, xml] # benötigt die PHP-Extensions GDlib und XML
+
+# Konflikte
+# Verhindert die Installation und Updates, wenn AddOns die genannten Anforderungen erfüllen
+# Siehe auch https://github.com/FriendsOfREDAXO/cache_warmup/pull/55#issuecomment-280906737
+# conflicts:
+#     packages:
+#         media_manager: '>=3' # Ist Media Manager in Version 3 vorhanden, führt das zum Konflikt mit diesem AddOn

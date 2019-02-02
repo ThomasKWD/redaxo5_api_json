@@ -1,0 +1,18 @@
+{
+    "name": "thomaskwd/redaxo5_api_json",
+    "description": "A JSON API for articles as Redaxo 5.x addon.",
+    "type": "Addon",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Thomas Kühne",
+            "email": "thomas@kuehne-webdienste.de"
+        }
+    ],
+    "require": {
+
+	},
+    "require-dev": {
+        "phpunit/phpunit": "^5"
+    }
+}
