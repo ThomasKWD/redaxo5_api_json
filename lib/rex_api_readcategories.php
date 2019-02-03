@@ -22,8 +22,4 @@ class rex_api_readcategories extends rex_api_function {
 
 		exit();
     }
-
-	function __construct() {
-		parent::__construct();
-	}
 }

@@ -512,10 +512,8 @@ abstract class kwd_jsonapi {
 
 	public function sendHeaders() {
 		foreach($this->getHeaders() as $h) {
-			
 			// ! only supports replace = true
 			header($h);
-			// header($h,false); // test
 		}
 	}
 

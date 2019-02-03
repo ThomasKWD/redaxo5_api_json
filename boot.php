@@ -46,9 +46,10 @@ function kwd_startJsonApi_output($params) {
 	$response = $kwdApi->buildResponse(); // returns immediately when no valid API request found
 	if ($response) {
 		$kwdApi->sendHeaders(); // ! headers not send in redaxo 5
-		echo $response;
-		exit();
-		// return $response;
+		// ob_end_clean();
+		// echo $response;
+		// // exit();
+		return $response;
 	}
 	// return $params['subject'];
 }
@@ -62,16 +63,12 @@ function kwd_startJsonApi_fast() {
 		exit();
 }
 
-function kwd_test() {
-	$r = new rex_api_readcategories();
-	$r->execute();
-}
 
 if (!rex::isBackend()) {
 
-	rex_extension::register('OUTPUT_FILTER', 'kwd_startJsonApi_output', rex_extension::LATE);
-	// rex_extension::register('PACKAGES_INCLUDED', 'kwd_test', rex_extension::LATE);
-
+	// we need rex_extension::EARLY because we want SPROG and other filters to be processed after
+	rex_extension::register('OUTPUT_FILTER', 'kwd_startJsonApi_output', rex_extension::EARLY);
+	// ??? better to explicitly use SPROG prgrammatically? ...Then ohter filtering is ignored, but i have more control
 
 	// faster but can not use OUTPUT_FILTER:
 	// ! NOT WORKING when /contents requested

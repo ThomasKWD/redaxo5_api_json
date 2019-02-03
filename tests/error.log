@@ -1,0 +1,16 @@
+Error thrown with message "Call to a member function append() on null"
+
+Stacktrace:
+#12 Error in rex:///module/1/output:15
+#11 require in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\cache\addons\structure\1.1.content:90
+#10 require in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\addons\structure\plugins\content\lib\article_content.php:100
+#9 rex_article_content:getArticle in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\addons\redaxo5_api_json\lib\kwd_jsonapi_rex5.php:25
+#8 kwd_jsonapi_rex5:getArticleContent in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\addons\redaxo5_api_json\lib\kwd_jsonapi.php:225
+#7 kwd_jsonapi:addArticle in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\addons\redaxo5_api_json\lib\kwd_jsonapi.php:234
+#6 kwd_jsonapi:addAllArticlesOfCategory in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\addons\redaxo5_api_json\lib\kwd_jsonapi.php:453
+#5 kwd_jsonapi:buildResponse in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\addons\redaxo5_api_json\boot.php:61
+#4 kwd_startJsonApi_fast in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\core\lib\extension.php:45
+#3 rex_extension:registerPoint in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\core\packages.php:29
+#2 include_once in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\core\frontend.php:12
+#1 require in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\redaxo\src\core\boot.php:136
+#0 require in C:\Users\G752VL\Documents\kwd\httproot\redaxo_demo\index.php:9

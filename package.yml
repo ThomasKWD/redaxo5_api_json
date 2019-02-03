@@ -12,8 +12,8 @@ supportpage: https://github.com/ThomasKWD/redaxo5_api_json
 # Anforderungen ans System oder anderere AddOns, um dieses AddOn installieren oder update zu können
 requires:
     redaxo: '^5.6.0' # benötigt mindestens REDAXO 5.1
-    # packages:
-        # media_manager: '^2.0.1' # benötigt mindestens das Addon Media Manager 2.0.1
+    packages:
+        structure: '^2.6.0'
     php:
         version: '>=5.6' # benötigt mindestens PHP 5.6
         # extensions: [gd, xml] # benötigt die PHP-Extensions GDlib und XML
