@@ -9,6 +9,8 @@ abstract class kwd_jsonapi {
 	const SERVER_REQUEST_SCHEME = 'REQUEST_SCHEME';
 	// const SERVER_REQUEST_METHOD = 'REQUEST_METHOD';
 
+	const META = 'meta';
+	const ERRORS = 'error'; // ! currently singular word
 	const HELP = 'help';
 	const CATEGORIES = 'categories';
 	const ARTICLES = 'articles';
@@ -27,8 +29,8 @@ abstract class kwd_jsonapi {
 	abstract protected function getArticleById($id,$clang = 0);
 	abstract protected function getArticleContent($article_id,$clang_id = 0,$ctype = 1);
 
-	function __construct($requestMethod = 'get', $requestScheme = 'http', $queryString = '', $serverPath) {
-		$this->init($requestMethod, $requestScheme, $queryString, $serverPath);
+	function __construct($requestMethod = 'get', $requestScheme = 'http', $serverPath = '/', $queryString = '') {
+		$this->init($requestMethod, $requestScheme, $serverPath, $queryString);
 	}
 
 	/** adds header to list
@@ -46,20 +48,9 @@ abstract class kwd_jsonapi {
 	* - helper function, does NOT modify state of object
 	*/
 	protected function buildBaseUrl($requestScheme,$serverPath) {
-
 		// rex_server is assumed existent in redaxo 4 and 5
-		// TODO: but you should extract it, it could be change in redaxo 6
-		$baseUrl = $requestScheme .'://'.$serverPath;
-
-		// check for trailing '/'
-		// - for the case we have *1 or more* trailing slashes
-		// ! endless loop if substr not working correctly
-		while (substr($baseUrl,-1) == '/') {
-			$baseUrl = substr($baseUrl,0,strlen($baseUrl) - 1);
-		}
-		$baseUrl  .= self::REQUEST_START;
-
-		return $baseUrl;
+		// ! php passes protocol without the ://
+		return strtolower(trim($requestScheme)) .'://'.strtolower(trim($serverPath," /\t\r\n\0\x0B")); // remove multiple slashes as well
 	}
 
 	/** check valid requestMethod
@@ -138,11 +129,6 @@ abstract class kwd_jsonapi {
 		return $entry;
 	}
 
-	// protected function addArticleValue(&$result,$art,$field,$name) {
-	// 	$val = $art->getValue($name);
-	// 	if ($val !== null) $result[$field] = $val;
-	// }
-
 	/** returns true if a string starts with certain string
 	*	@return boolean true: found, else false
 	*/
@@ -174,6 +160,7 @@ abstract class kwd_jsonapi {
 						// ! order of checks matters
 						if ($m == 'name') $field = '';
 						if ($this->startsWith($m,'art_')) $field = '';
+						// ??? problem when requesting an article via category
 						if ($m == 'catname') $field = 'name';
 						else if ($this->startsWith($m,'cat_')) $flagMetaInfo = true;
 						else if ($this->startsWith($m,'cat')) $field = substr($m,3);
@@ -184,7 +171,7 @@ abstract class kwd_jsonapi {
 						else if ($this->startsWith($m,'art_')) $flagMetaInfo = true;
 					}
 					// remove this line when offlines possible:
-					if ($m === 'status') $field = '';
+					// if ($m === 'status') $field = '';
 
 					if ($field) {
 						$temp = $artOrCat->getValue($m);
@@ -210,7 +197,7 @@ abstract class kwd_jsonapi {
 	}
 
 	// get data from OOarticle object
-	protected function addArticle($art, $content = false, $ctype_id) {
+	protected function addArticle($art, $content, $ctype_id) {
 		// order matters:
 		// $res['id'] = $art->getId();
 		// $res['name'] = $art->getName();
@@ -237,9 +224,10 @@ abstract class kwd_jsonapi {
 		return $ret;
 	}
 
-	/// ??? make var for server name
+	// ??? - prepare for different link building (sub functions)
+	// ??? ! must be able to build links for "rewrite off" AND "want param url request style"
 	protected function apiLink($queryString) {
-		return $this->baseUrl .$queryString;
+		return $this->baseUrl . self::REQUEST_START .$queryString;
 	}
 
 	protected function articleLink($article_id,$clang_id = 0,$showContent = false) {
@@ -279,7 +267,7 @@ abstract class kwd_jsonapi {
 		$this->addHeader("HTTP/1.1 404 Not Found");
 
 		$response['request'] = 'api/'.$apiString;
-		$response['error']['message'] = 'Resource for this request not found.';
+		$response['error']['message'] = 'Resource for this request not found. Probably you passed an id that does not exist.';
 		$response['error'][self::HELP]['info'] = 'Start with /api or /api/'.self::CATEGORIES;
 		$response['error'][self::HELP]['links'][] = $this->apiLink('');
 		$response['error'][self::HELP]['links'][] = $this->apiLink(self::CATEGORIES);
@@ -297,12 +285,7 @@ abstract class kwd_jsonapi {
 		// if ($api && preg_match('/^api=/Ui',$api)) {
 		if (substr($api,0,strlen(self::APIMARKER)) === self::APIMARKER) {
 
-			// START
-			// ob_end_clean(); // - not needed: remove caching and thus prevent changes by extension_point "OUTPUT_BUFFER"
-			// can be a problem/limitation because output buffer operations ar not done
-
-			// immediately stop on PUT/DELETE/POST commands
-			// if (strtolower($_SERVER[self::SERVER_REQUEST_METHOD]) != 'get')  {
+			// !only allow GET
 			if ($this->requestMethod !== 'get') {
 				$this->addHeader('HTTP/1.1 403 Forbidden');
 				$response['error']['message'] = 'You can only GET data.';
@@ -358,7 +341,7 @@ abstract class kwd_jsonapi {
 						$showArticlesOfCategory = true;
 						array_pop($request);
 					}
-					else {
+					else if ($request[0] === self::CATEGORIES) { // here check if articles without cat
 						// ! convention no content allowed when no articles requested
 						if ($content) {
 							$content = false;
@@ -369,7 +352,8 @@ abstract class kwd_jsonapi {
 					}
 
 					if ($continue) {
-						//$response['debug']['explode'] = $request;
+						// ??? move the whole 'request stuff' out of here and couple to parametric syntax
+						//     this woul also ease up checks in this method
 						if ($request[0] == self::HELP) {
 							$response['info'] = 'You will get hierarchical "categories". A selected category will contain a list of its immediate sub categories and data of its related "articles" when requested. Please note: only categories or articles defined as "online" are shown. See the "examples" section of this response!';
 							$response['examples'] = array(
@@ -477,6 +461,40 @@ abstract class kwd_jsonapi {
 									// ! can be empty array because *all* root articles could be offline (not depending on cat)
 									$response[self::ARTICLES] = $artRes;
 								}
+							}
+						}
+						else if ($request[0] === self::ARTICLES) {
+							if (isset($request[1]) && is_numeric($request[1])) {
+
+								//  ! dup code removed when requestBuilder function ready
+								if (isset($request[2])) {
+									$clang_id = intval($request[2]); // ! warning this may not work in redaxo 5.x
+								}
+								else $clang_id = 0;// ! warning this may not work in redaxo 5.x
+
+								$art = $this->getArticleById(intval($request[1]),$clang_id);
+								// $art == null when id not found
+								if ($art) {
+									$response = array_merge($response, $this->addArticle($art,$content,$selectedCtype));
+								}
+								else {
+									// not found
+									$response = $this->generateResourceNotFound($api);
+								}
+							}
+							// ??? this check should also be done when in category
+							//     - also eased up when 'buildRequest' written
+							else if (isset($request[1])) {
+								// ! bad request
+								$response = $this->generateSyntaxError($api);
+							}
+							else {
+								// planned:
+								// $response = $this->generateForbiddenError($api);
+								$this->addHeader('HTTP/1.1 403 Forbidden');
+								$response[self::ERRORS]['message'] = 'Currently you can not request all articles without specifying an id';
+								$response[self::HELP]['info'] = 'You can travers categories starting by the entry point to find articles.';
+								$response[self::HELP]['links'][] = $this->apiLink('');
 							}
 						}
 						else {
