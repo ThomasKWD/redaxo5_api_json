@@ -46,11 +46,15 @@ Just try your Redaxo project URI with `/api`. It provides an entry point and sug
 
 `yourdomain.tld/api/categories/3/articles` returns category with ID == 3 and all articles in it and in its sub categories.
 
-`yourdomain.tld/api/categories/3/articles/contents/2` returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/contents` ***returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/contents/2` ****returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/metainfos` **returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/slices` **returns "article content" of ctype 2 of all articles found.
 
+`yourdomain.tld/api/articles/48/` returns a single "article".
 `yourdomain.tld/api/articles/48/contents` returns a single "article".
-
-
+`yourdomain.tld/api/slices/48/` returns a single "slice".
+`yourdomain.tld/api/slices/48/contents` returns a single "article".
 
 You can use the api without a rewrite rule. Type e.g. `yourdomain.tld/index.php?api=categories/4`.
 

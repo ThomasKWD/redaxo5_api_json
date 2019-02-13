@@ -1,7 +1,7 @@
 <?php
 use PHPUnit\Framework\TestCase;
 
-require_once('../classes/kwd_jsonapi.php');
+require_once('../lib/kwd_jsonapi.php');
 
 class mockRexEntity {
 
@@ -11,6 +11,15 @@ class mockRexEntity {
 
 	function getId() {
 		return $this->id;
+	}
+
+
+	function getName() {
+		return $this->name;
+	}
+
+	function getClang() {
+		return $this->clang_id;
 	}
 
 	public function getCreateDate() {
@@ -25,8 +34,13 @@ class mockRexEntity {
 		return [
 			'id',
 			'name',
+			// ??? in rex 5.x it is parent_id !
+			're_id',
+			'catname',
+			'clang',
 			'createdate',
-			'updatedate'
+			'updatedate',
+			'startpage'
 		];
 	}
 
@@ -37,11 +51,12 @@ class mockRexEntity {
 	function getValue($value) {
 
 		if ($value == 'id') return $this->id;
+		if ($value == 're_id') return $this->id;
 		if ($value == 'name') return $this->name;
+		if ($value == 'catname') return $this->name;
 		if ($value == 'clang') return $this->clang_id;
 		if ($value == 'createdate') return strtotime('3 Oct 2018 2:30');
 		if ($value == 'updatedate') return strtotime('24 Dec 2018 18:05');
-
 		return null;
 	}
 }
@@ -51,29 +66,25 @@ class mockRexEntity {
 class mockRexArticle extends mockRexEntity {
 	private $_isStartArticle;
 	private $content;
+	protected $category_id;
 
-	function __construct($id, $name = '', $clang_id = 0, $isStartArticle = false, $content = '') {
+	function __construct($id, $name = '', $clang_id = 0, $catid, $isStartArticle = false, $content = '') {
 		$this->id = $id;
 		$this->name = $name;
 		$this->_isStartArticle = $isStartArticle ? true : false;
 		$this->content = $content;
 		$this->clang_id = $clang_id;
-	}
-
-	function getId() {
-		return $this->id;
-	}
-
-	function getName() {
-		return $this->name;
-	}
-
-	function getClang() {
-		return $this->clang_id;
+		$this->category_id = $catid;
 	}
 
 	function isStartArticle() {
-		return $this->_isStartArticle;
+		return $this->getValue('startpage'); //_isStartArticle;
+	}
+
+	function getValue($key) {
+		if ($key == 'startpage') return $this->_isStartArticle ? 1 : 0; // stored bool but redaxo uses int
+		if ($key == 're_id') return $this->category_id; // stored bool but redaxo uses int
+		else return parent::getValue($key);
 	}
 
 	// to mock better (internal use, not in Redaxo!)
@@ -86,15 +97,19 @@ class mockRexCategory extends mockRexEntity {
 
 	private $articles = [];
 
-	protected function _addArticle($id,$name,$clang_id,$isStartArticle,$content) {
-		return new mockRexArticle($id,$name,$clang_id,$isStartArticle,$content);
+	protected function _addArticle($id,$name,$clang_id,$catid,$isStartArticle,$content) {
+		return new mockRexArticle($id,$name,$clang_id,$catid,$isStartArticle,$content);
 	}
 
 	function __construct($id,$name,$clang_id) {
 		$this->id = $id;
 		$this->name = $name;
 		$this->clang_id = $clang_id;
-		$this->articles[] = $this->_addArticle($id,$name.'_article',$clang_id,true,'<p>voll der Start-Artikel Content</p>');
+		$this->articles[] = $this->_addArticle($id,$name.'_article',$clang_id,$id,true,'<p>voll der Start-Artikel Content</p>');
+		// make article 48 if we are in cat 3 which must not be set startarticle
+		if ($id==3) {
+			$this->articles[] = $this->_addArticle(48,'Android App_article',0,$id,false,'<p>Body of Android App article (id48)</p>');
+		}
 	}
 
 	public function getId() {
@@ -127,6 +142,15 @@ class mockRexCategory extends mockRexEntity {
 // need an extra derived class
 class kwd_jsonapi_test extends kwd_jsonapi {
 
+	function __construct($method = 'GET', $scheme = 'http', $serverPath = 'localhost/tk/kwd_website/', $query = 'api=') {
+		parent::__construct(
+			$method,
+			$scheme,
+			$serverPath,
+			$query
+		);
+	}
+
 	public function getRootCategories($ignore_offlines = false, $clang = 0) {
 		// to mock the root categories we just generate objects from a json
 		$rootCats = array();
@@ -150,6 +174,9 @@ class kwd_jsonapi_test extends kwd_jsonapi {
 	}
 
 	public function getArticleById($id, $clang = 0) {
+		if ($id == 48) return new mockRexArticle($id,'Android App',$clang,3,false,'<p>Body of Android News Article</p>');
+		if ($id == 3) return new mockRexArticle($id,'Referenzen, Auswahl',$clang,3,true,'<b>body of referenzen3</b>');
+
 		return null;
 	}
 
@@ -170,14 +197,6 @@ class kwd_jsonapi_test extends kwd_jsonapi {
 		return "<p>Demo Content for id=$article_id, clang=$clang_id, ctype=$ctype</p>";
 	}
 
-	function __construct($method = 'GET', $scheme = 'http', $serverPath = 'localhost/tk/kwd_website', $query = 'api=') {
-		parent::__construct(
-			$method,
-			$scheme,
-			$serverPath,
-			$query
-		);
-	}
 }
 
 class KwdJsonApiTestCase extends TestCase {
@@ -210,17 +229,17 @@ class KwdJsonApiTestCase extends TestCase {
 		$conf = $jao->getConfiguration();
 		$this->assertArrayHasKey('requestMethod',$conf); // redundant because array indices used below
 		$this->assertSame($conf['requestMethod'],'get','request method must be valid case insensitive');
-		$this->assertSame($conf['baseUrl'],'http://localhost/tk/kwd_website/api/','baseUrl must eliminate >1 trailing slashes, but add if none');
-		$this->assertSame($conf['apiString'],'api=','queryString must have "api="...');
+		$this->assertSame('http://localhost/tk/kwd_website',$conf['baseUrl'],'baseUrl must eliminate trailing slashes');
+		$this->assertSame($conf['queryString'],'api=','queryString must have "api="...');
     }
 
 	public function testCorrectBaseUrl() {
 		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website','api=');
-		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost/tk/kwd_website/api/');
+		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost/tk/kwd_website');
 		$jao = new kwd_jsonapi_test('get','http','localhost2/tk/kwd_website/');
-		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost2/tk/kwd_website/api/');
+		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost2/tk/kwd_website');
 		$jao = new kwd_jsonapi_test('get','http','localhost3/tk/kwd_website//');
-		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost3/tk/kwd_website/api/');
+		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost3/tk/kwd_website');
 
 		// ... hope GC frees mem of all the 3 objects
 	}
@@ -248,6 +267,36 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertEquals($jao->getHeaders()[0],'HTTP/1.0 403 Forbidden','sample check index 0');
 		$this->assertEquals($jao->getHeaders()[1],$accesControlOrigin,'sample check index 1');
 	}
+
+
+
+	///////////////////////////
+	// hierachical
+	// ///////////////////////
+
+	// first test convertion of uri
+	// because internally param syntax is used
+
+	// /api/categories
+	public function testConvertBasicHierarchicalSyntax() {
+		$jao = new kwd_jsonapi_test();
+		$jao->setApiQueryString('/api/categories');
+		$queryString = $jao->getGetConfiguration()['apiRquest'];
+		$this->assertInternalType('string',$queryString);
+		$this->assertSame('api',$uriData['api'],'api is named api until we can adjust it');
+	}
+
+	// /api/categories/3
+	public function testConvertBasicHierchicalSyntaxWithCatId() {
+		// $jao = new
+	}
+
+	// /api/categories/3/0/articles/includes=contents,metainfos,slices
+	// = includes check conversion to parameter string
+	public function testConvertFullHierarchicalSyntaxToAssocArrayData() {
+
+	}
+
 
 	public function testApiRootResponse() {
 		$jao = new kwd_jsonapi_test('GET','http','localhost','api=');
@@ -284,7 +333,6 @@ class KwdJsonApiTestCase extends TestCase {
 		// print_r($json);
 
 		$this->assertTrue(strncmp('api/',$json->request,4) === 0,$json->request.' must start with "api/"');
-		$this->assertSame(0,$json->clang_id,'must provide language clang_id');
 
 		// check categories, then 1 in detail, then inner article of the first
 		// /api/categories
@@ -319,7 +367,6 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertTrue(is_object($json->error));
 	}
 
-
 	// /api/categories
 	public function testGenerateResponseForRootCategories() {
 		$jao = new kwd_jsonapi_test();
@@ -347,6 +394,7 @@ class KwdJsonApiTestCase extends TestCase {
 		$response = $jao->buildResponse();
 		$json = json_decode($response);
 
+		$this->assertSame('Referenzen',$json->name);
 		$this->assertSame($json->name,'Referenzen');
 		$this->assertSame($json->id,3);
 		// ! categories now contains sub catgeories of category 3
@@ -396,15 +444,15 @@ class KwdJsonApiTestCase extends TestCase {
 	function testRequestUnknownCategory() {
 		$json = $this->getResponseFromNew('/api/categories/1234');
 		$this->assertTrue(isset($json->error),'should have error element');
-		$this->assertSame('Resource for this request not found.',$json->error->message,'should have "not found" message');
+		$this->assertNotFalse(strstr($json->error->message,'Resource for this request not found.'),'should have "not found" message');
 	}
 
 	// /api/categories/3/articles
 	function testRequestCategoryWithSubCategoriesAndSubArticles() {
 		$response = $this->getResponseFromNew('/api/categories/3/articles');
 
-		$this->assertEquals(1,count($response->articles),'field "articles" of catmust contain 1 element');
-
+		// ! in the case of cat 3 wie mocked 2 articles
+		$this->assertEquals(2,count($response->articles),'field "articles" of cat 3 must contain 2 elements');
 		$cat1 = $response->categories[0];
 		$this->assertSame('Shuri Ryu Berlin',$cat1->name,'should have a subcat with name');
 
@@ -412,7 +460,7 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertTrue($art1 !== null);
 		$this->assertEquals('Shuri Ryu Berlin_article',$art1->name,'should have article name');
 		$this->assertEquals(12,$art1->id);
-		$this->assertTrue($art1->is_start_article,'should set as "start article"');
+		$this->assertSame(1,$art1->startpage,'should be set as "start article"');
 
 		$this->markTestIncomplete('must check "links" (wrong old format!!)');
 	}
@@ -483,14 +531,32 @@ class KwdJsonApiTestCase extends TestCase {
 	}
 
 
-	// /api/articles/3
-	// ! disabled
-	function testArticlesDisabled() {
+	// - this may also work with /api/categories/... (somehow)
+	function testRequestAllArticles() {
 		$json = $this->getResponseFromNew('/api/articles');
-		$this->assertTrue(isset($json->error),'must have "error" because disabled');
-		$json = $this->getResponseFromNew('/api/articles/3');
-		$this->assertTrue(isset($json->error),'must have "error" because disabled');
+		$this->assertTrue(isset($json->error),'must have "error" because cannot list ALL articles');
 	}
+
+	// /api/articles/48/contents
+	// - this cannot work with /api/categories/... because it is not a start article of a cat
+	function testRequestSingleArticle() {
+		$json = $this->getResponseFromNew('/api/articles/48/contents');
+	 	$this->assertFalse(isset($json->articles),'must not have sub articles');
+		$this->assertSame(48,$json->id,'must have id unequal to its cat');
+		$this->assertSame(3,$json->re_id,'must have re_id; unequal to its cat');
+		$this->assertSame('Android App',$json->catname,'must have catname');
+		$this->markTestIncomplete('see commented stuff');
+	}
+
+	// /api/articles/3
+	function testRequestSingleArticleWhenStartArticle() {
+		$json = $this->getResponseFromNew('/api/articles/3');
+		$this->assertFalse(isset($json->error),'must NOT have "error" because  valid');
+	}
+
+	// /api/categories/48/articles/
+	// ! this currently works but is *wrong*
+	// ! id of art/cat mismatch because article id is output as category id because of the getFields.. simplific.
 
 	// /api/help
 	// - should also suggest "/api/categories/0/contents"

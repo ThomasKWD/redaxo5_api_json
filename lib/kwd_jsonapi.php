@@ -3,7 +3,7 @@
 abstract class kwd_jsonapi {
 
 	// ! const can not have acces modifier in PHP < 7.1
-	const APIMARKER = 'api=';
+	const APIMARKER = 'api='; // ??? must be config-able
 	const REQUEST_START = '/api/'; // to generate correct links to api resources in response
 	const SERVER_QUERY_STRING = 'QUERY_STRING';
 	const SERVER_REQUEST_SCHEME = 'REQUEST_SCHEME';
@@ -19,7 +19,9 @@ abstract class kwd_jsonapi {
 
 	protected $requestMethod = '';
 	protected $baseUrl = '';
-	protected $api = '';
+	protected $queryStringHierarchical = '';
+	protected $queryString = ''; // maybe already make data structure and don't store url
+	protected $queryData = array();
 
 	protected $headers = array(); // indexed array
 
@@ -68,14 +70,61 @@ abstract class kwd_jsonapi {
 	}
 
 	/** reset query string
-	*	- simple setter to easily change config after init
+	*	- makes data from $queryString
+	*   - auto detects structured (hierarchical) OR parameter string
 	*	! modifies object property
+	*  @param queryString string to be converted
 	*   @return string newly set string
 	*/
-	public function setApiQueryString($queryString) {
-		$this->api = $queryString;
+	public function setApiQueryString($q) {
 
-		return $this->api;
+		$this->thomas = 'andreas'; // init by usage always works :-/
+		$q = strtolower($q);
+
+		// string must not contain '/' when parameters
+		// string must not contain '&' when structured
+		if (strstr($q,'&') === false && strstr ($q,'/') === '/') {
+			$q = trim($q," /\t\r\n\0\x0B"); // remove multiple slashes as well
+
+			$this->queryStringHierarchical = $q;
+
+			// ! self::APIMARKER is now the name of the api
+
+			// - multiple slashes are now eleminiated by ignoring empty entries
+			$r = explode('/',$q);
+
+			// ! working from start AND from end
+
+			// first cut contents OR metadata OR slices
+			// new syntax see example in README.md
+			// ??? add field 'error'='syntax' which is used later on
+
+			if (count($r) > 3 && $r[count($r) - 2] === self::CONTENTS && is_numeric($r[count($r) - 1]))
+
+			$data['api'] = array_shift($r); // first
+			if ($r[0] === self::CATEGORIES) {
+				$data['category_id'] = $r[1];
+			}
+			if ($data['category_id'] === self::ARTICLES) {
+				$data['category_id'] = 0;
+				$data['includes']['articles'] = 1;
+			}
+			else {
+				if (is_numeric($r[2])) {
+					$data['clang'] = $r[2];
+				}
+			}
+
+
+
+			$this->queryData = $data;
+		}
+		else {
+			$q = str_replace('&amp;','&',$q);
+			$this->queryString = $q;
+			parse_str($this->queryString,$this->queryData);
+			if ($this->queryData === false) $this->queryData = array(); // prevent future type mismatch
+		}
 	}
 
 	protected function init ($requestMethod = 'get', $requestScheme = 'http', $serverPath = '/', $queryString = '') {
@@ -89,10 +138,13 @@ abstract class kwd_jsonapi {
 	* - getter; does NOT modify state of object
 	*/
 	public function getConfiguration() {
+
 		return array(
 			'requestMethod' => $this->requestMethod,
 			'baseUrl' => $this->baseUrl,
-			'apiString' => $this->api
+			'queryString' => $this->queryString,
+			'queryStringHierarchical' => $this->queryStringHierarchical,
+			'apiQueryData' => $this->apiQueryData
 		);
 	}
 
@@ -278,7 +330,7 @@ abstract class kwd_jsonapi {
 
 	public function buildResponse() {
 
-		$api = $this->api;
+		$api = $this->queryStringHierarchical; // ! as long as parameters not working
 		$response = array();
 		// the substr AND strlen construct is assumed to be more efficient than reg exp
 		// - just avoid reg exp when possible

@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 class KwdJsonApiRex4TestCase extends TestCase {
 
-	const apiPath = 'http://localhost/tk/kwd_website/api/';
+	const apiPath = 'http://localhost/tk/redaxo_demo/api/';
 
 	public function getJson($query) {
 		$curl = curl_init(self::apiPath.$query);
