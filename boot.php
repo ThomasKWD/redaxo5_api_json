@@ -45,11 +45,12 @@ function kwd_startJsonApi_output($params) {
 	$kwdApi = new kwd_jsonapi_rex5(); // ??? add parameter from config as server string *index*
 	$response = $kwdApi->buildResponse(); // returns immediately when no valid API request found
 	if ($response) {
+    // ob_end_clean();
 		$kwdApi->sendHeaders(); // ! headers not send in redaxo 5
-		// ob_end_clean();
-		// echo $response;
-		// // exit();
-		return $response;
+		echo $response;
+    // $kwdApi->send();
+		exit();
+		// return $response; 
 	}
 	// return $params['subject'];
 }
@@ -57,7 +58,6 @@ function kwd_startJsonApi_output($params) {
 // - could be switched "on" by configuration
 function kwd_startJsonApi_fast() {
 	$kwdApi = new kwd_jsonapi_rex5(); // ??? add parameter from config as server string *index*
-
 	// returns false, if repsonse empty, true when something in it
 	if ($kwdApi->send($kwdApi->buildResponse())) // ! send contains ob_end and echo
 		exit();
@@ -72,5 +72,6 @@ if (!rex::isBackend()) {
 
 	// faster but can not use OUTPUT_FILTER:
 	// ! NOT WORKING when /contents requested
+	// rex_extension::register('FE_OUTPUT', 'kwd_startJsonApi_output');
 	// rex_extension::register('PACKAGES_INCLUDED', 'kwd_startJsonApi_fast');
 }
