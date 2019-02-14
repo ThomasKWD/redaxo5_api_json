@@ -84,14 +84,13 @@ abstract class kwd_jsonapi {
 		// string must not contain '/' when parameters
 		// string must not contain '&' when structured
 		if (strstr($q,'&') === false && strstr ($q,'/') === '/') {
-			$q = trim($q," /\t\r\n\0\x0B"); // remove multiple slashes as well
 
-			$this->queryStringHierarchical = $q;
+			$this->queryStringHierarchical = trim($q," /\t\r\n\0\x0B"); // ??? code can be removed when buildResponse works with queryData array
 
 			// ! self::APIMARKER is now the name of the api
 
 			// - multiple slashes are now eleminiated by ignoring empty entries
-			$r = explode('/',$q);
+			$r = $this->splitTrimmed($q);
 
 			// ! working from start AND from end
 
@@ -99,23 +98,60 @@ abstract class kwd_jsonapi {
 			// new syntax see example in README.md
 			// ??? add field 'error'='syntax' which is used later on
 
-			if (count($r) > 3 && $r[count($r) - 2] === self::CONTENTS && is_numeric($r[count($r) - 1]))
-
 			$data['api'] = array_shift($r); // first
-			if ($r[0] === self::CATEGORIES) {
-				$data['category_id'] = $r[1];
+
+			// finds contents at end
+			if (count($r) > 3 && $r[count($r) - 2] === self::CONTENTS && is_numeric($r[count($r) - 1])) {
+				$data['includes']['contents'] = $r[count($r)-1];
+				array_pop($r);
+				array_pop($r);
 			}
-			if ($data['category_id'] === self::ARTICLES) {
-				$data['category_id'] = 0;
-				$data['includes']['articles'] = 1;
-			}
-			else {
-				if (is_numeric($r[2])) {
-					$data['clang'] = $r[2];
+			else if (count($r)){
+				$elem = $r[count($r)-1];
+
+				if ($elem === self::CONTENTS) {
+					$data['includes']['contents'] = 1;
+					array_pop($r);
+				}
+				else if (strstr($elem,',')) {
+					//  ! no loop; this prevents injecting user input in array directly
+					if (strstr($elem,self::METAINFOS)) $data[self::METAINFOS] = 1;
+					if (strstr($elem,self::CONTENTS)) $data[self::CONTENTS] = 1;
+					if (strstr($elem,self::SLICES)) $data[self::SLICES] = 'all';
 				}
 			}
 
+			$data['clang'] = 1; // ! id always starts at 1 in Redaxo 5.x
 
+			if (count($r)) {
+				if ($r[0] === self::CATEGORIES) {
+					if (isset($r[1])) {
+						if($r[1] === self::ARTICLES) {
+							$data['category_id'] = 0;
+							$data['includes']['articles'] = 1;
+						}
+						else if (is_numeric($r[1])) {
+							$data['category_id'] = intval($r[1]);
+							if (isset($r[2]) && is_numeric($r[2])) {
+								$data['clang'] = intval($r[2]);
+							}
+						}
+					}
+					else $data['category_id'] = 0;
+				}
+
+				if ($r[0] === self::ARTICLES) {
+					// ??? how to combine code with above block
+					if (isset($r[1])) {
+						if (is_numeric($r[1])) {
+							$data['article_id'] = intval($r[1]);
+							if (isset($r[2]) && is_numeric($r[2])) {
+								$data['clang'] = intval($r[2]);
+							}
+						}
+					}
+				}
+			}
 
 			$this->queryData = $data;
 		}
@@ -142,9 +178,10 @@ abstract class kwd_jsonapi {
 		return array(
 			'requestMethod' => $this->requestMethod,
 			'baseUrl' => $this->baseUrl,
+			'apiName' => self::APIMARKER, // ??? edit to be editable 
 			'queryString' => $this->queryString,
 			'queryStringHierarchical' => $this->queryStringHierarchical,
-			'apiQueryData' => $this->apiQueryData
+			'apiQueryData' => $this->queryData
 		);
 	}
 
@@ -293,9 +330,11 @@ abstract class kwd_jsonapi {
 	//  --- API DATA GENERATION
 
 	// always returns array,
-	// - was more complicated and now remains function
+	// - filter without callback does what i need: remove empty elements
+	// - array_values needed to "re-index" from 0
+	// - trim with slashes: (not neede here) trim($api," /\t\r\n\0\x0B"); // remove multiple slashes as well
 	protected function splitTrimmed($string) {
-		return explode('/',$string);
+		return array_values(array_filter(explode('/',trim($string))));
 	}
 
 	protected function generateSyntaxError($apiString) {
@@ -350,214 +389,213 @@ abstract class kwd_jsonapi {
 
 				$api = strtolower($api);
 				$api = str_replace(self::APIMARKER,'',$api);
-				$api = trim($api," /\t\r\n\0\x0B"); // remove multiple slashes as well
 
-				if (strstr($api,'//')) {
-					$response = generateSyntaxError($api);
+				// if (strstr($api,'//')) {
+				// 	$response = generateSyntaxError($api);
+				// }
+				// else {
+
+				// request string as array:
+				$request = $this->splitTrimmed($api);
+
+				// first remove entries which may come from leading/trailing slashes "/":
+
+				$response['request'] = 'api/'.$api;
+				$response['debug']['queryString'] = $api;
+				$response['debug']['host'] = $host;
+
+				$content = false;
+				$continue = true;
+				$showArticlesOfCategory = false;
+				$selectedCtype = 1;
+
+				if ($request[count($request) - 1] === self::CONTENTS) {
+					$content = true;
+					array_pop($request);
 				}
-				else {
-					// request string as array:
-					$request = $this->splitTrimmed($api);
-
-					// first remove entries which may come from leading/trailing slashes "/":
-
-					$response['request'] = 'api/'.$api;
-					$response['debug']['queryString'] = $api;
-					$response['debug']['host'] = $host;
-
-					$content = false;
-					$continue = true;
-					$showArticlesOfCategory = false;
-					$selectedCtype = 1;
-
-					if ($request[count($request) - 1] === self::CONTENTS) {
+				// with ctype def
+				else if (count($request) >= 3 && $request[count($request) - 2] === self::CONTENTS) {
+					$c = $request[count($request) - 1];
+					if (is_numeric($c)) {
+						$selectedCtype = intval($c);
 						$content = true;
 						array_pop($request);
-					}
-					// with ctype def
-					else if (count($request) >= 3 && $request[count($request) - 2] === self::CONTENTS) {
-						$c = $request[count($request) - 1];
-						if (is_numeric($c)) {
-							$selectedCtype = intval($c);
-							$content = true;
-							array_pop($request);
-							array_pop($request);
-						}
-						else {
-							// should send bad request here
-							// ??? maybe flag for bad request, then continue not needed below!
-						}
-					}
-
-					if (count($request) > 1 && $request[count($request) - 1] === self::ARTICLES) {
-						$showArticlesOfCategory = true;
 						array_pop($request);
 					}
-					else if ($request[0] === self::CATEGORIES) { // here check if articles without cat
-						// ! convention no content allowed when no articles requested
-						if ($content) {
-							$content = false;
-							$continue = false;
-							$response = $this->generateSyntaxError($api);
-							$response['error']['message'] = 'Semantic error. You cannot request "contents" without requesting "articles".';
-						}
+					else {
+						// should send bad request here
+						// ??? maybe flag for bad request, then continue not needed below!
+					}
+				}
+
+				if (count($request) > 1 && $request[count($request) - 1] === self::ARTICLES) {
+					$showArticlesOfCategory = true;
+					array_pop($request);
+				}
+				else if ($request[0] === self::CATEGORIES) { // here check if articles without cat
+					// ! convention no content allowed when no articles requested
+					if ($content) {
+						$content = false;
+						$continue = false;
+						$response = $this->generateSyntaxError($api);
+						$response['error']['message'] = 'Semantic error. You cannot request "contents" without requesting "articles".';
+					}
+				}
+
+				if ($continue) {
+					// ??? move the whole 'request stuff' out of here and couple to parametric syntax
+					//     this woul also ease up checks in this method
+					if ($request[0] == self::HELP) {
+						$response['info'] = 'You will get hierarchical "categories". A selected category will contain a list of its immediate sub categories and data of its related "articles" when requested. Please note: only categories or articles defined as "online" are shown. See the "examples" section of this response!';
+						$response['examples'] = array(
+							array(
+								'info' => 'Entry point, currently also provides "root categories"', 'link' => $this->apiLink('')
+							),
+							array(
+								'info' => 'Root "categories"',
+								'link' => $this->apiLink(self::CATEGORIES)
+							),
+							// ! currently disabled
+							// array('info' => 'Alternative entry point because no id specified', 'link' => $this->apiLink(self::ARTICLES)),
+							array(
+								'info' => 'A category selected by its ID (always contains immediate sub categories).',
+								'link' => $this->apiLink(self::CATEGORIES.'/3')
+							),
+							array(
+								'info' => 'A category selected by its ID and its language (clang).',
+								'link' => $this->apiLink(self::CATEGORIES.'/3/1')
+							),
+							array(
+								'info' => 'A category with list of "articles" (also articles in sub categories).',
+								'link' => $this->apiLink(self::CATEGORIES.'/3/0/articles')
+							),
+							array(
+								'info' => 'A category with articles and those bodies (compiled "article content").',
+								'link' => $this->apiLink(self::CATEGORIES.'/3/0/articles/contents')
+							)
+						);
+						$response['external']['info'] = 'Understand the basic concepts of "categories" and "articles":';
+						$response['external']['links'][] = 'https://redaxo.org';
+						$response['external']['links'][] = 'https://redaxo.org/doku/master/system';
+
 					}
 
-					if ($continue) {
-						// ??? move the whole 'request stuff' out of here and couple to parametric syntax
-						//     this woul also ease up checks in this method
-						if ($request[0] == self::HELP) {
-							$response['info'] = 'You will get hierarchical "categories". A selected category will contain a list of its immediate sub categories and data of its related "articles" when requested. Please note: only categories or articles defined as "online" are shown. See the "examples" section of this response!';
-							$response['examples'] = array(
-								array(
-									'info' => 'Entry point, currently also provides "root categories"', 'link' => $this->apiLink('')
-								),
-								array(
-									'info' => 'Root "categories"',
-									'link' => $this->apiLink(self::CATEGORIES)
-								),
-								// ! currently disabled
-								// array('info' => 'Alternative entry point because no id specified', 'link' => $this->apiLink(self::ARTICLES)),
-								array(
-									'info' => 'A category selected by its ID (always contains immediate sub categories).',
-									'link' => $this->apiLink(self::CATEGORIES.'/3')
-								),
-								array(
-									'info' => 'A category selected by its ID and its language (clang).',
-									'link' => $this->apiLink(self::CATEGORIES.'/3/1')
-								),
-								array(
-									'info' => 'A category with list of "articles" (also articles in sub categories).',
-									'link' => $this->apiLink(self::CATEGORIES.'/3/0/articles')
-								),
-								array(
-									'info' => 'A category with articles and those bodies (compiled "article content").',
-									'link' => $this->apiLink(self::CATEGORIES.'/3/0/articles/contents')
-								)
-							);
-							$response['external']['info'] = 'Understand the basic concepts of "categories" and "articles":';
-							$response['external']['links'][] = 'https://redaxo.org';
-							$response['external']['links'][] = 'https://redaxo.org/doku/master/system';
+					else if ($request[0] === '' || $request[0] === self::CATEGORIES) {
+						$response['debug'][self::CONTENTS] = $content;
+						// set start cat id
+						$startCat = 0;
+						$clang_id = 0;
+						$kids = null;
 
+						if (isset($request[1])) {
+						 	$startCat = intval($request[1]);
+						}
+						if (isset($request[2])) {
+							$clang_id = intval($request[2]);
 						}
 
-						else if ($request[0] === '' || $request[0] === self::CATEGORIES) {
-							$response['debug'][self::CONTENTS] = $content;
-							// set start cat id
-							$startCat = 0;
-							$clang_id = 0;
-							$kids = null;
+						// ! we assume rqeuesting cat id == 0 means rootCategories!!
+						$cat = $this->getCategoryById($startCat,$clang_id);
 
-							if (isset($request[1])) {
-							 	$startCat = intval($request[1]);
-							}
-							if (isset($request[2])) {
-								$clang_id = intval($request[2]);
-							}
+						if ($cat) {
+							$kids = $cat->getChildren(true);
 
-							// ! we assume rqeuesting cat id == 0 means rootCategories!!
-							$cat = $this->getCategoryById($startCat,$clang_id);
+							// ??? yet another sub func: for cat data
 
-							if ($cat) {
-								$kids = $cat->getChildren(true);
+							$response = array_merge($response,$this->getCategoryFields($cat,$clang_id));
 
-								// ??? yet another sub func: for cat data
-
-								$response = array_merge($response,$this->getCategoryFields($cat,$clang_id));
-
-								// $response['id'] = $cat->getId();
-								// $response['name'] = $cat->getName();
-								// $response['createdate'] = $cat->getCreateDate();
-								// $response['updatedate'] = $cat->getUpDateDate();
-							}
-							else if (!$startCat) {
-								$kids = $this->getRootCategories(true,$clang_id);
-
-								$response['info'] = 'You can use the ids or links in the list of root "categories".';
-								$response[self::HELP]['info'] = 'Check out the help section too!';
-								$response[self::HELP]['links'][] = $this->apiLink(self::HELP);
-							}
-							else {
-								$response = $this->generateResourceNotFound($api);
-							}
-
-							if ($kids && count($kids)) {
-								foreach($kids as $k) {
-									$catResponse = $this->getCategoryFields($k,$clang_id,$showArticlesOfCategory,$content);
-
-									if ($showArticlesOfCategory) {
-										$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$selectedCtype);
-									}
-									$response[self::CATEGORIES][] = $catResponse;
-								}
-							}
-							else if (!$startCat){
-								// IDEA: check if better to have an empty array "categories[]" to indicate there usually are some
-								$response['warning'] = 'Currently no root "categories" online.';
-							}
-
-							// my own content
-							// ??? sub function
-							// ??? must be loop for all in cat!!!!!!
-							if ($showArticlesOfCategory) {
-								if ($cat)  {
-									$response[self::ARTICLES] = $this->addAllArticlesOfCategory($cat,$content,$selectedCtype);
-								}
-								else if (!$startCat) {
-									$artRes = [];
-									$arts = $this->getRootArticles(true,$clang_id);
-									foreach($arts as $art) {
-										$artRes[] = $this->addArticle($art,$content,$selectedCtype); // TODO: wrong usage of $content
-									}
-									// - could insert if to prevent empty array
-									// ! can be empty array because *all* root articles could be offline (not depending on cat)
-									$response[self::ARTICLES] = $artRes;
-								}
-							}
+							// $response['id'] = $cat->getId();
+							// $response['name'] = $cat->getName();
+							// $response['createdate'] = $cat->getCreateDate();
+							// $response['updatedate'] = $cat->getUpDateDate();
 						}
-						else if ($request[0] === self::ARTICLES) {
-							if (isset($request[1]) && is_numeric($request[1])) {
+						else if (!$startCat) {
+							$kids = $this->getRootCategories(true,$clang_id);
 
-								//  ! dup code removed when requestBuilder function ready
-								if (isset($request[2])) {
-									$clang_id = intval($request[2]); // ! warning this may not work in redaxo 5.x
-								}
-								else $clang_id = 0;// ! warning this may not work in redaxo 5.x
-
-								$art = $this->getArticleById(intval($request[1]),$clang_id);
-								// $art == null when id not found
-								if ($art) {
-									$response = array_merge($response, $this->addArticle($art,$content,$selectedCtype));
-								}
-								else {
-									// not found
-									$response = $this->generateResourceNotFound($api);
-								}
-							}
-							// ??? this check should also be done when in category
-							//     - also eased up when 'buildRequest' written
-							else if (isset($request[1])) {
-								// ! bad request
-								$response = $this->generateSyntaxError($api);
-							}
-							else {
-								// planned:
-								// $response = $this->generateForbiddenError($api);
-								$this->addHeader('HTTP/1.1 403 Forbidden');
-								$response[self::ERRORS]['message'] = 'Currently you can not request all articles without specifying an id';
-								$response[self::HELP]['info'] = 'You can travers categories starting by the entry point to find articles.';
-								$response[self::HELP]['links'][] = $this->apiLink('');
-							}
+							$response['info'] = 'You can use the ids or links in the list of root "categories".';
+							$response[self::HELP]['info'] = 'Check out the help section too!';
+							$response[self::HELP]['links'][] = $this->apiLink(self::HELP);
 						}
 						else {
-							$response = $this->generateSyntaxError($api);
-							// // articles/categories not found
-							// $this->addHeader('HTTP/1.1 400 Bad Request');
-							// $response['error']['message'] = 'Syntax error or unknown request component';
-							// $response['error'][self::HELP]['info'] = 'See links for entry point or help.';
-							// $response['error'][self::HELP]['links'][] = $this->apiLink('');
-							// $response['error'][self::HELP]['links'][] = $this->apiLink(self::HELP);
+							$response = $this->generateResourceNotFound($api);
 						}
+
+						if ($kids && count($kids)) {
+							foreach($kids as $k) {
+								$catResponse = $this->getCategoryFields($k,$clang_id,$showArticlesOfCategory,$content);
+
+								if ($showArticlesOfCategory) {
+									$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$selectedCtype);
+								}
+								$response[self::CATEGORIES][] = $catResponse;
+							}
+						}
+						else if (!$startCat){
+							// IDEA: check if better to have an empty array "categories[]" to indicate there usually are some
+							$response['warning'] = 'Currently no root "categories" online.';
+						}
+
+						// my own content
+						// ??? sub function
+						// ??? must be loop for all in cat!!!!!!
+						if ($showArticlesOfCategory) {
+							if ($cat)  {
+								$response[self::ARTICLES] = $this->addAllArticlesOfCategory($cat,$content,$selectedCtype);
+							}
+							else if (!$startCat) {
+								$artRes = [];
+								$arts = $this->getRootArticles(true,$clang_id);
+								foreach($arts as $art) {
+									$artRes[] = $this->addArticle($art,$content,$selectedCtype); // TODO: wrong usage of $content
+								}
+								// - could insert if to prevent empty array
+								// ! can be empty array because *all* root articles could be offline (not depending on cat)
+								$response[self::ARTICLES] = $artRes;
+							}
+						}
+					}
+					else if ($request[0] === self::ARTICLES) {
+						if (isset($request[1]) && is_numeric($request[1])) {
+
+							//  ! dup code removed when requestBuilder function ready
+							if (isset($request[2])) {
+								$clang_id = intval($request[2]); // ! warning this may not work in redaxo 5.x
+							}
+							else $clang_id = 0;// ! warning this may not work in redaxo 5.x
+
+							$art = $this->getArticleById(intval($request[1]),$clang_id);
+							// $art == null when id not found
+							if ($art) {
+								$response = array_merge($response, $this->addArticle($art,$content,$selectedCtype));
+							}
+							else {
+								// not found
+								$response = $this->generateResourceNotFound($api);
+							}
+						}
+						// ??? this check should also be done when in category
+						//     - also eased up when 'buildRequest' written
+						else if (isset($request[1])) {
+							// ! bad request
+							$response = $this->generateSyntaxError($api);
+						}
+						else {
+							// planned:
+							// $response = $this->generateForbiddenError($api);
+							$this->addHeader('HTTP/1.1 403 Forbidden');
+							$response[self::ERRORS]['message'] = 'Currently you can not request all articles without specifying an id';
+							$response[self::HELP]['info'] = 'You can travers categories starting by the entry point to find articles.';
+							$response[self::HELP]['links'][] = $this->apiLink('');
+						}
+					}
+					else {
+						$response = $this->generateSyntaxError($api);
+						// // articles/categories not found
+						// $this->addHeader('HTTP/1.1 400 Bad Request');
+						// $response['error']['message'] = 'Syntax error or unknown request component';
+						// $response['error'][self::HELP]['info'] = 'See links for entry point or help.';
+						// $response['error'][self::HELP]['links'][] = $this->apiLink('');
+						// $response['error'][self::HELP]['links'][] = $this->apiLink(self::HELP);
 					}
 				}
 			}

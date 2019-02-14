@@ -281,9 +281,9 @@ class KwdJsonApiTestCase extends TestCase {
 	public function testConvertBasicHierarchicalSyntax() {
 		$jao = new kwd_jsonapi_test();
 		$jao->setApiQueryString('/api/categories');
-		$queryString = $jao->getGetConfiguration()['apiRquest'];
+		$queryString = $jao->getConfiguration()['queryString'];
 		$this->assertInternalType('string',$queryString);
-		$this->assertSame('api',$uriData['api'],'api is named api until we can adjust it');
+		$this->assertSame('/api/categories',$queryString,'api is named api until we can adjust it');
 	}
 
 	// /api/categories/3
@@ -296,7 +296,6 @@ class KwdJsonApiTestCase extends TestCase {
 	public function testConvertFullHierarchicalSyntaxToAssocArrayData() {
 
 	}
-
 
 	public function testApiRootResponse() {
 		$jao = new kwd_jsonapi_test('GET','http','localhost','api=');
