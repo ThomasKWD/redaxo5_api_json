@@ -98,8 +98,9 @@ abstract class kwd_jsonapi {
 			// new syntax see example in README.md
 			// ??? add field 'error'='syntax' which is used later on
 
-			$data['api'] = array_shift($r); // first
-
+			if(count($r)) $data['api'] = array_shift($r); // first
+			else ($data['error'] = 'syntax');
+			
 			// finds contents at end
 			if (count($r) > 3 && $r[count($r) - 2] === self::CONTENTS && is_numeric($r[count($r) - 1])) {
 				$data['includes']['contents'] = $r[count($r)-1];
@@ -178,10 +179,10 @@ abstract class kwd_jsonapi {
 		return array(
 			'requestMethod' => $this->requestMethod,
 			'baseUrl' => $this->baseUrl,
-			'apiName' => self::APIMARKER, // ??? edit to be editable 
+			'apiName' => self::APIMARKER, // ??? edit to be editable
 			'queryString' => $this->queryString,
 			'queryStringHierarchical' => $this->queryStringHierarchical,
-			'apiQueryData' => $this->queryData
+			'queryData' => $this->queryData
 		);
 	}
 

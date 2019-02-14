@@ -282,8 +282,11 @@ class KwdJsonApiTestCase extends TestCase {
 		$jao = new kwd_jsonapi_test();
 		$jao->setApiQueryString('/api/categories');
 		$queryString = $jao->getConfiguration()['queryString'];
-		$this->assertInternalType('string',$queryString);
-		$this->assertSame('/api/categories',$queryString,'api is named api until we can adjust it');
+		$this->assertSame('/api/categories',$queryString,'should be same as input');
+		$this->assertSame('api=',$jao->getConfiguration()['apiName'],'api is named api until we can adjust it');
+		$data = $jao->getConfiguration()['queryData'];
+		$this->assertSame('api',$data['api'],'api name in array');
+		$this->assertSame(0,$data['category_id'],'category_id=0');
 	}
 
 	// /api/categories/3
