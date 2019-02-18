@@ -39,18 +39,19 @@ if (rex::isBackend() && is_object(rex::getUser())) {
 
 // - uses OUTPUT_FILTER because user will expect this (esp. for project wide replacemets)
 function kwd_startJsonApi_output($params) {
-	// print_r($params);
-	// exit();
 	$response = '';
+
+	// $kwdApi = new kwd_jsonapi_rex5(rex_server('QUERY_STRING'));
+
+	// ??? add parameter from config as server string *index*
 	$kwdApi = new kwd_jsonapi_rex5(); // ??? add parameter from config as server string *index*
 	$response = $kwdApi->buildResponse(); // returns immediately when no valid API request found
 	if ($response) {
-    // ob_end_clean();
-		$kwdApi->sendHeaders(); // ! headers not send in redaxo 5
-		echo $response;
-    // $kwdApi->send();
-		exit();
-		// return $response; 
+		// $kwdApi->sendHeaders(); // ! headers not send in redaxo 5
+		// echo $response;
+		$kwdApi->send($response);
+		exit(); // why does exit() not work
+		// return $response;
 	}
 	// return $params['subject'];
 }
