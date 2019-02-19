@@ -5,24 +5,24 @@
 */
 class kwd_jsonapi_rex5 extends kwd_jsonapi {
 
-	protected function getRootCategories($ignore_offlines = false, $clang = 0) {
+	protected function getRootCategories($ignore_offlines = false, $clang = 1) {
 		return rex_category::getRootCategories($ignore_offlines,$clang);
 	}
 
-	protected function getRootArticles($ignore_offlines = false, $clang = 0) {
+	protected function getRootArticles($ignore_offlines = false, $clang = 1) {
 		return rex_article::getRootArticles($ignore_offlines,$clang);
 	}
 
-	protected function getCategoryById($id, $clang = 0) {
+	protected function getCategoryById($id, $clang = 1) {
 		return rex_category::get($id, $clang);
 	}
 
-	protected function getArticleById($id, $clang = 0) {
+	protected function getArticleById($id, $clang = 1) {
 		return rex_article::get($id,$clang);
 	}
 
-	protected function getArticleContent($article_id,$clang_id = 0,$ctype = 1) {
-		return (new rex_article_content($article_id,$clang_id))->getArticle($ctype);  // hard coded ctype 1
+	protected function getArticleContent($article_id,$clang = 1,$ctype = 1) {
+		return (new rex_article_content($article_id,$clang))->getArticle($ctype);  // hard coded ctype 1
 	}
 
 	/** returns url with corrected start/ending

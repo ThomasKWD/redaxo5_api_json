@@ -13,15 +13,20 @@ abstract class kwd_jsonapi {
 	const HELP = 'help';
 	const CATEGORIES = 'categories';
 	const ARTICLES = 'articles';
+
+	const INCLUDES = 'includes';
 	const CONTENTS = 'contents';
 	const METAINFOS = 'metainfos';
 	const SLICES = 'slices';
+	const OFFLINES = 'offlines';
+
 	const STRUCTURE = 'structure';
 
 	const CATEGORY_ID = 'category_id';
 	const ARTICLE_ID = 'article_id';
 	const CLANG = 'clang';
 
+	protected $clangBase = 1;
 	protected $requestMethod = '';
 	protected $baseUrl = '';
 	protected $apiName = 'kwdapi'; // ??? must be editable by init or by setApiName
@@ -36,9 +41,10 @@ abstract class kwd_jsonapi {
 	abstract protected function getCategoryById($id, $clang = 0);
 	abstract protected function getRootArticles($ignore_offlines = false,$clang = 0);
 	abstract protected function getArticleById($id,$clang = 0);
-	abstract protected function getArticleContent($article_id,$clang_id = 0,$ctype = 1);
+	abstract protected function getArticleContent($article_id,$clang = 0,$ctype = 1);
 
-	function __construct($requestMethod = 'get', $requestScheme = 'http', $serverPath = '/', $queryString = '') {
+	function __construct($requestMethod = 'get', $requestScheme = 'http', $serverPath = '/', $queryString = '', $newClangBase = 1) {
+		$this->clangBase = $newClangBase;
 		$this->init($requestMethod, $requestScheme, $serverPath, $queryString);
 	}
 
@@ -74,6 +80,17 @@ abstract class kwd_jsonapi {
 		if ($requestMethod !== 'get') $requestMethod = 'get';
 
 		return $requestMethod;
+	}
+
+	/** makes a check whether 'articles' found in entry
+	*   ! modifies data array
+	*/
+	protected function checkArticlesRequested($entry,&$data) {
+		if ($entry === self::ARTICLES) {
+			$data[self::INCLUDES][self::ARTICLES] = 1;
+			return true;
+		}
+		return false;
 	}
 
 	/** reset query string
@@ -140,24 +157,30 @@ abstract class kwd_jsonapi {
 					if (strstr($elem,self::METAINFOS)) $data[self::METAINFOS] = 1;
 					if (strstr($elem,self::CONTENTS)) $data[self::CONTENTS] = 1;
 					if (strstr($elem,self::SLICES)) $data[self::SLICES] = 'all';
+					array_pop($r);
 				}
 			}
 
-
 			if (count($r)) {
-				$data[self::CLANG] = 1; // ! id always starts at 1 in Redaxo 5.x
+				$data[self::CLANG] = $this->clangBase; // ! id always starts at 1 in Redaxo 5.x
 
 				if ($r[0] === self::CATEGORIES) {
 					if (isset($r[1])) {
-						if($r[1] === self::ARTICLES) {
-							$data[self::CATEGORY_ID] = 0;
-							$data['includes']['articles'] = 1;
-						}
-						else if (is_numeric($r[1])) {
+						if (is_numeric($r[1])) {
 							$data[self::CATEGORY_ID] = intval($r[1]);
-							if (isset($r[2]) && is_numeric($r[2])) {
-								$data[self::CLANG] = intval($r[2]);
+							if (isset($r[2])) {
+								if (is_numeric($r[2])) {
+									$data[self::CLANG] = intval($r[2]);
+									// ??? must check for 'articles' in $r[3]
+									$data['info'] = 'clang set';
+									if (isset($r[3])) $this->checkArticlesRequested($r[3],$data);
+								}
+								else $this->checkArticlesRequested($r[2],$data);
 							}
+						}
+						else {
+							$this->checkArticlesRequested($r[1],$data);
+							$data[self::CATEGORY_ID] = 0;
 						}
 					}
 					else $data[self::CATEGORY_ID] = 0;
@@ -174,11 +197,22 @@ abstract class kwd_jsonapi {
 						}
 					}
 				}
+
+				if ($r[0] === self::HELP) {
+					$data[self::HELP] = 1;
+				}
+			}
+			// empty (==entry point)
+			else {
+				// TODO: must be adjustable by var otherwise not running in redaxo 4
+				$data[self::CLANG] = $this->clangBase; // ! id always starts at 1 in Redaxo 5.x
+				$data[self::CATEGORY_ID] = 0;
 			}
 
 			// also provide parameter string although not really needed
 			// - can better split up functions + remain consistent when looking at config with getConfiguration()
-			$this->queryString = http_build_query($data);
+			// ! uses ampersand '&amp;' by default
+			$this->queryString = http_build_query($data,'','&');
 		}
 		else {
 			$isParametric = true;
@@ -381,7 +415,7 @@ abstract class kwd_jsonapi {
 		return array_values(array_filter(explode('/',trim($string))));
 	}
 
-	protected function generateSyntaxError($apiString) {
+	protected function generateSyntaxError() {
 
 		$response = [];
 
@@ -393,10 +427,13 @@ abstract class kwd_jsonapi {
 		$response['error'][self::HELP]['links'][] = $this->apiLink('');
 		$response['error'][self::HELP]['links'][] = $this->apiLink(self::HELP);
 
+		$response['debug']['query'] = $this->getConfiguration();
+		$response['debug']['phpini_amp'] = ini_get('arg_separator.output');
+
 		return $response;
 	}
 
-	protected function generateResourceNotFound($apiString) {
+	protected function generateResourceNotFound() {
 		$response;
 
 		$this->addHeader("HTTP/1.1 404 Not Found");
@@ -439,7 +476,7 @@ abstract class kwd_jsonapi {
 				$host = $this->baseUrl; // ???: check id SERVER var correct in all cases!
 
 				// if (strstr($api,'//')) {
-				// 	$response = generateSyntaxError($api);
+				// 	$response = generateSyntaxError();
 				// }
 				// else {
 
@@ -524,84 +561,81 @@ abstract class kwd_jsonapi {
 					if (!isset($query[self::ARTICLE_ID]) && isset($query[self::INCLUDES][self::CONTENTS])) {
 						$content = false;
 						$continue = false;
-						$response = $this->generateSyntaxError($api);
+						$response = $this->generateSyntaxError();
 						$response['error']['message'] = 'Semantic error. You cannot request "contents" without requesting "articles".';
 					}
-
-					// include articles of all returned categories
-					if (isset($query[self::ARTICLE_ID])) $showArticlesOfCategory = true;
-
-
-					$response['debug'][self::CONTENTS] = $content;
-					// set start cat id
-					$startCat = 0;
-					$clang_id = 0;
-					$kids = null;
-
-					if (isset($request[1])) {
-						$startCat = intval($request[1]);
-					}
-					if (isset($request[2])) {
-						$clang_id = intval($request[2]);
-					}
-
-					// ! we assume rqeuesting cat id == 0 means rootCategories!!
-					$cat = $this->getCategoryById($startCat,$clang_id);
-
-					if ($cat) {
-						$kids = $cat->getChildren(true);
-
-						// ??? yet another sub func: for cat data
-
-						$response = array_merge($response,$this->getCategoryFields($cat,$clang_id));
-
-						// $response['id'] = $cat->getId();
-						// $response['name'] = $cat->getName();
-						// $response['createdate'] = $cat->getCreateDate();
-						// $response['updatedate'] = $cat->getUpDateDate();
-					}
-					else if (!$startCat) {
-						$kids = $this->getRootCategories(true,$clang_id);
-
-						$response['info'] = 'You can use the ids or links in the list of root "categories".';
-						$response[self::HELP]['info'] = 'Check out the help section too!';
-						$response[self::HELP]['links'][] = $this->apiLink(self::HELP);
-					}
 					else {
-						$response = $this->generateResourceNotFound($api);
-					}
 
-					if ($kids && count($kids)) {
-						foreach($kids as $k) {
-							$catResponse = $this->getCategoryFields($k,$clang_id,$showArticlesOfCategory,$content);
+						// include articles of all returned categories
+						if (isset($query[self::ARTICLE_ID])) $showArticlesOfCategory = true;
 
-							if ($showArticlesOfCategory) {
-								$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$selectedCtype);
-							}
-							$response[self::CATEGORIES][] = $catResponse;
-						}
-					}
-					else if (!$startCat){
-						// IDEA: check if better to have an empty array "categories[]" to indicate there usually are some
-						$response['warning'] = 'Currently no root "categories" online.';
-					}
+						$response['debug'][self::CONTENTS] = $content;
+						// set start cat id
+						$startCat = $query[self::CATEGORY_ID];
+						$clang_id = $query[self::CLANG]; // always preset
+						$kids = null;
 
-					// my own content
-					// ??? sub function
-					// ??? must be loop for all in cat!!!!!!
-					if ($showArticlesOfCategory) {
-						if ($cat)  {
-							$response[self::ARTICLES] = $this->addAllArticlesOfCategory($cat,$content,$selectedCtype);
+
+						// ! we assume rqeuesting cat id == 0 means rootCategories!!
+						$cat = $this->getCategoryById($startCat,$clang_id);
+
+						if ($cat) {
+							$kids = $cat->getChildren(true);
+
+							// ??? yet another sub func: for cat data
+
+							$response = array_merge($response,$this->getCategoryFields($cat,$clang_id));
+
+							// $response['id'] = $cat->getId();
+							// $response['name'] = $cat->getName();
+							// $response['createdate'] = $cat->getCreateDate();
+							// $response['updatedate'] = $cat->getUpDateDate();
 						}
 						else if (!$startCat) {
-							$artRes = [];
-							$arts = $this->getRootArticles(true,$clang_id);
-							foreach($arts as $art) {
-								$artRes[] = $this->addArticle($art,$content,$selectedCtype); // TODO: wrong usage of $content
+							$kids = $this->getRootCategories(true,$clang_id);
+
+							$response['info'] = 'You can use the ids or links in the list of root "categories".';
+							$response[self::HELP]['info'] = 'Check out the help section too!';
+							$response[self::HELP]['links'][] = $this->apiLink(self::HELP);
+						}
+						else {
+							$response = $this->generateResourceNotFound();
+							$response['debug']['info'] = 'getCategoryById '.$startCat. ' failed';
+						}
+
+						if ($kids && count($kids)) {
+							foreach($kids as $k) {
+								$catResponse = $this->getCategoryFields($k,$clang_id,$showArticlesOfCategory,$content);
+
+								if ($showArticlesOfCategory) {
+									$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$selectedCtype);
+								}
+								$response[self::CATEGORIES][] = $catResponse;
 							}
-							// - could insert if to prevent empty array
-							// ! can be empty array because *all* root articles could be offline (not depending on cat)
-							$response[self::ARTICLES] = $artRes;
+						}
+						else if (!$startCat){
+							// IDEA: check if better to have an empty array "categories[]" to indicate there usually are some
+							$response['warning'] = 'Currently no root "categories" online.';
+						}
+
+
+						// my own content
+						// ??? sub function
+						// ??? must be loop for all in cat!!!!!!
+						if ($showArticlesOfCategory) {
+							if ($cat)  {
+								$response[self::ARTICLES] = $this->addAllArticlesOfCategory($cat,$content,$selectedCtype);
+							}
+							else if (!$startCat) {
+								$artRes = [];
+								$arts = $this->getRootArticles(true,$clang_id);
+								foreach($arts as $art) {
+									$artRes[] = $this->addArticle($art,$content,$selectedCtype); // TODO: wrong usage of $content
+								}
+								// - could insert if to prevent empty array
+								// ! can be empty array because *all* root articles could be offline (not depending on cat)
+								$response[self::ARTICLES] = $artRes;
+							}
 						}
 					}
 				}
@@ -627,13 +661,13 @@ abstract class kwd_jsonapi {
 						}
 						else {
 							// not found
-							$response = $this->generateResourceNotFound($api);
+							$response = $this->generateResourceNotFound();
 						}
 					}
 					// ! commented out because clang always allowed
 					// else if (intval($query[self::CLANG])) {
 					// 	// ! bad request
-					// 	$response = $this->generateSyntaxError($api);
+					// 	$response = $this->generateSyntaxError();
 					// }
 					else {
 						// planned:
@@ -644,8 +678,9 @@ abstract class kwd_jsonapi {
 						$response[self::HELP]['links'][] = $this->apiLink('');
 					}
 				}
+
 				else {
-					$response = $this->generateSyntaxError($this->queryRaw);
+					$response = $this->generateSyntaxError();
 					// // articles/categories not found
 					// $this->addHeader('HTTP/1.1 400 Bad Request');
 					// $response['error']['message'] = 'Syntax error or unknown request component';
