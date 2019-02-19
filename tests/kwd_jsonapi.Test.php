@@ -195,7 +195,7 @@ class kwd_jsonapi_test extends kwd_jsonapi {
 		}
 
 		if ($foundArt) return $foundArt->_getContent();
-		return "<p>Demo Content for id=$article_id, clang=$clang_id, ctype=$ctype</p>";
+		return "<p>Demo Content for id=$article_id, clang=$clang, ctype=$ctype</p>";
 	}
 
 }
@@ -460,12 +460,12 @@ class KwdJsonApiTestCase extends TestCase {
 
 	// /kwdapi/categories/3/0 must be valid but not found
 	public function testLanguage0NotFound() {
-		// $json = $this->getResponseFromNew('kwdapi=categories/3/0');
-		// // TODO: how to test received headers?
-		// $this->assertTrue(isset($json->error),'should have error element');
-		// $headers = $this->getHeadersForResponseFromNew('kwdapi=categories/3/1');
-		// $this->assertContains('HTTP/1.1 404 Not Found',$headers,'must contain HTTP 404 header');
-		$this->markTestIncomplete('why clang=0 not recognized in setApiQueryString???');
+		$json = $this->getResponseFromNew('kwdapi=categories/3/0');
+		// TODO: how to test received headers?
+		$this->assertTrue(isset($json->error),'should have error element');
+		$headers = $this->getHeadersForResponseFromNew('kwdapi=categories/3/1');
+		$this->assertContains('HTTP/1.1 404 Not Found',$headers,'must contain HTTP 404 header');
+		// $this->markTestIncomplete('why clang=0 not recognized in setApiQueryString???');
 	}
 
 	// /kwdapi/categories/3/2 must be valid but not found
@@ -494,6 +494,7 @@ class KwdJsonApiTestCase extends TestCase {
 
 		// ! in the case of cat 3 wie mocked 2 articles
 		$this->assertEquals(2,count($response->articles),'field "articles" of cat 3 must contain 2 elements');
+
 		$cat1 = $response->categories[0];
 		$this->assertSame('Shuri Ryu Berlin',$cat1->name,'should have a subcat with name');
 
@@ -510,7 +511,7 @@ class KwdJsonApiTestCase extends TestCase {
 	//  ! must be invalid because need '.../articles'
 	function testRequestCategoryWithContentBadRequest() {
 		$jao = new kwd_jsonapi_test();
-		$jao->setApiQueryString('api=categories/3/contents');
+		$jao->setApiQueryString('kwdapi=categories/3/contents');
 		$response = $jao->buildResponse();
 		$json = json_decode($response);
 		$headers = $jao->getHeaders();
@@ -521,19 +522,20 @@ class KwdJsonApiTestCase extends TestCase {
 
 	// /kwdapi/categories/articles/contents
 	function testRequestRootCategoriesWithContent() {
-		$json = $this->getResponseFromNew('/kwdapi/categories/articles/contents');
+		$json = $this->getResponseFromNew('kwdapi=categories/articles/contents');
 
 		// sample: pick cat2, start article content
+		$this->assertTrue(isset($json->categories[1]), 'should have 2 cats');
+		$this->assertTrue(isset($json->categories[1]->articles[0]), '2nd cat should have 1 article');
 		$art = $json->categories[1]->articles[0];
-		// $this->assertSame(21,$art->id,'should have proper id');
-		// $this->assertSame('News_article',$art->name,'should have proper id');
 		$this->assertTrue(isset($art->body),'should have body');
 		$this->assertInternalType('string',$art->body);
 	}
 
 	// /kwdapi/categories/3/0/articles/contents
 	function testRequestCategory3WithContent() {
-		$json = $this->getResponseFromNew('/kwdapi/categories/3/0/articles/contents');
+		// ??? still clang=0 no error but handled as clang=1
+		$json = $this->getResponseFromNew('kwdapi=categories/3/0/articles/contents');
 
 		// sample: pick 3rd cat, start article content
 		$art = $json->categories[2]->articles[0];
@@ -542,25 +544,25 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertTrue(isset($art->body),'should have body');
 		$this->assertInternalType('string',$art->body);
 		$this->assertSame('Moldt Events_article',$art->name,'name should contain certain text');
-		$this->assertSame('<p>Demo Content for id=13, clang=0, ctype=1</p>',$art->body,'body should contain certain text');
+		$this->assertSame('<p>Demo Content for id=13, clang=1, ctype=1</p>',$art->body,'body should contain certain text');
 
 		// self::t();
 	}
 
 	// /kwdapi/categories/articles/contents/2
 	function testRequestRootCategoriesWithContentAndCtype2() {
-		$json = $this->getResponseFromNew('/kwdapi/categories/articles/contents/2');
+		$json = $this->getResponseFromNew('kwdapi=categories/articles/contents/2');
 
 		// sample: pick cat2, start article content
 		$this->assertTrue(isset($json->categories[1]->articles),'should have articles list');
 		$art = $json->categories[1]->articles[0];
 		$this->assertTrue(isset($art->body),'should have body');
 		$this->assertInternalType('string',$art->body);
-		$this->assertSame('<p>Demo Content for id=21, clang=0, ctype=2</p>',$art->body);
+		$this->assertSame('<p>Demo Content for id=21, clang=1, ctype=2</p>',$art->body);
 	}
 
 	function testRequestCategory3WithContentAndCtype2() {
-		$json = $this->getResponseFromNew('/kwdapi/categories/3/0/articles/contents/2');
+		$json = $this->getResponseFromNew('kwdapi=categories/3/0/articles/contents/2');
 		// sample: pick 3rd cat, start article content
 		$art = $json->categories[2]->articles[0];
 		$this->assertSame(13,$art->id,'should have proper id');
@@ -568,25 +570,23 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertTrue(isset($art->body),'should have body');
 		$this->assertInternalType('string',$art->body);
 		$this->assertSame('Moldt Events_article',$art->name,'name should contain certain text');
-		$this->assertSame('<p>Demo Content for id=13, clang=0, ctype=2</p>',$art->body,'body should contain certain text');
+		$this->assertSame('<p>Demo Content for id=13, clang=1, ctype=2</p>',$art->body,'body should contain certain text');
 	}
 
-
-	// - this may also work with /kwdapi/categories/... (somehow)
 	function testRequestAllArticles() {
-		$json = $this->getResponseFromNew('/kwdapi/articles');
+		$json = $this->getResponseFromNew('kwdapi=articles');
 		$this->assertTrue(isset($json->error),'must have "error" because cannot list ALL articles');
+		// $this->assertSame('ee',$json->debug);
+		$this->assertContains('can not request all articles',$json->error->message,'must have sensible error message/type');
 	}
 
 	// /kwdapi/articles/48/contents
-	// - this cannot work with /kwdapi/categories/... because it is not a start article of a cat
 	function testRequestSingleArticle() {
-		$json = $this->getResponseFromNew('/kwdapi/articles/48/contents');
+		$json = $this->getResponseFromNew('kwdapi=articles/48/contents');
 	 	$this->assertFalse(isset($json->articles),'must not have sub articles');
 		$this->assertSame(48,$json->id,'must have id unequal to its cat');
 		$this->assertSame(3,$json->re_id,'must have re_id; unequal to its cat');
 		$this->assertSame('Android App',$json->catname,'must have catname');
-		$this->markTestIncomplete('see commented stuff');
 	}
 
 	// /kwdapi/articles/3
@@ -605,6 +605,8 @@ class KwdJsonApiTestCase extends TestCase {
 		$json = $this->getResponseFromNew('kwdapi=help///');
 		$this->assertTrue(isset($json->examples),'should have "help"');
 		$this->assertTrue(isset($json->info),'should have "help"');
+		$this->assertTrue(is_array($json->examples),'should have list of "examples"');
+		$this->assertTrue(is_array($json->external),'should have list of "external"');
 		self::markTestIncomplete('help links not tested');
 	}
 

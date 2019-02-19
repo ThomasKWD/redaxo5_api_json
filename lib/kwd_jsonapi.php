@@ -31,7 +31,7 @@ abstract class kwd_jsonapi {
 	protected $baseUrl = '';
 	protected $apiName = 'kwdapi'; // ??? must be editable by init or by setApiName
 	protected $queryRaw = '';
-	protected $queryStringHierarchical = '';
+	protected $queryStringHierarchical = ''; // expected to be '' when current request was not hierarchical
 	protected $queryString = ''; // maybe already make data structure and don't store url
 	protected $queryData = array();
 
@@ -112,7 +112,7 @@ abstract class kwd_jsonapi {
 
 		// string must not contain '/' when parameters
 		// string must not contain '&' when structured
-		if (strstr($q,'&') === false) {
+		if (strstr($q,'&') === false && strpos($q,self::APIMARKER.'=') !== 0) {
 
 			// sometimes a parameter query goes here when only 1 entry like "api=kwdapi"
 			if ($q === self::APIMARKER .'='. $this->apiName) $isParametric = true;
@@ -141,24 +141,17 @@ abstract class kwd_jsonapi {
 
 			// finds contents at end
 			if (count($r) > 3 && $r[count($r) - 2] === self::CONTENTS && is_numeric($r[count($r) - 1])) {
-				$data['includes']['contents'] = $r[count($r)-1];
+				$data[self::INCLUDES][self::CONTENTS] = $r[count($r)-1];
 				array_pop($r);
 				array_pop($r);
 			}
 			else if (count($r)){
 				$elem = $r[count($r)-1];
-
-				if ($elem === self::CONTENTS) {
-					$data['includes']['contents'] = 1;
-					array_pop($r);
-				}
-				else if (strstr($elem,',')) {
-					//  ! no loop; this prevents injecting user input in array directly
-					if (strstr($elem,self::METAINFOS)) $data[self::METAINFOS] = 1;
-					if (strstr($elem,self::CONTENTS)) $data[self::CONTENTS] = 1;
-					if (strstr($elem,self::SLICES)) $data[self::SLICES] = 'all';
-					array_pop($r);
-				}
+				//  ! no loop; this prevents injecting user input in array directly
+				if (strstr($elem,self::METAINFOS)) $data[self::INCLUDES][self::METAINFOS] = 1;
+				if (strstr($elem,self::CONTENTS)) $data[self::INCLUDES][self::CONTENTS] = 1;
+				if (strstr($elem,self::SLICES)) $data[self::INCLUDES][self::SLICES] = 'all';
+				array_pop($r);
 			}
 
 			if (count($r)) {
@@ -196,6 +189,9 @@ abstract class kwd_jsonapi {
 							}
 						}
 					}
+					else {
+						$data[self::ARTICLE_ID] = 0; // should lead to handle all articles OR error
+					}
 				}
 
 				if ($r[0] === self::HELP) {
@@ -218,6 +214,8 @@ abstract class kwd_jsonapi {
 			$isParametric = true;
 
 			$this->queryRaw = $q;
+			// important for later format of links
+			$this->queryStringHierarchical = '';
 
 			// ??? shorten up foll. lines!
 			$q = str_replace('&amp;','&',$q);
@@ -227,9 +225,24 @@ abstract class kwd_jsonapi {
 			if ($data === false) {
 				$data = array();
 			}
-		}
+			// add root categories to entry point
+			else if(count($data) === 1) {
+				$data[self::CATEGORY_ID] = 0;
+			}
+			else {
+				// we want to split up includes and moveto sub array
+				if (isset($data[self::INCLUDES])) {
+					$temp = explode(',',$data[self::INCLUDES]);
+					$data[self::INCLUDES] = array();
+					foreach($temp as $i) {
+						$data[self::INCLUDES][$i] = 1; // make assoc sub array
+					}
+					// ??? how define contents=3 (for ctype)
+					// ??? use ctype=1
+				}
 
-		if ($isParametric) $this->queryStringHierarchical = '';
+			}
+		}
 
 		// discard array when api entry not found as key
 		// ??? or insert error ...
@@ -273,16 +286,7 @@ abstract class kwd_jsonapi {
 		return $this->headers = $headersArray;
 	}
 
-	// ??? better naming!
-	protected function getSubLink($id,$name = '') {
-		$entry['id'] = $id;
-		if ($name) $entry['name'] = $name;
-		$entry['link'] = $this->articleLink($id);
-		// return array
-		return $entry;
-	}
-
-	protected function getCategoryFields($cat, $clang_id = 0, $articles = false, $content = false) {
+	protected function getCategoryFields($cat, $clang_id = 1, $includes = array()) {
 		$id = $cat->getId();
 		// $entry['id'] = $id;
 		// $entry['name'] = $cat->getName();
@@ -291,7 +295,14 @@ abstract class kwd_jsonapi {
 
 		$entry = $this->getMetaInfos($cat,null);
 
-		$entry['link'] = $this->categoryLink($id,$clang_id,$articles,$content);
+		$a = array (
+			self::CATEGORY_ID => $id,
+			self::CLANG => $clang_id,
+			self::INCLUDES => $includes // ??? does sub array work??
+		);
+
+		$entry['link'] = $this->apiLink($a);
+
 		// return array
 		return $entry;
 	}
@@ -391,18 +402,32 @@ abstract class kwd_jsonapi {
 		return $ret;
 	}
 
-	// ??? - prepare for different link building (sub functions)
-	// ??? ! must be able to build links for "rewrite off" AND "want param url request style"
-	protected function apiLink($queryString) {
-		return $this->baseUrl . '/'.$this->apiName.'/'.$queryString;
-	}
+	// ! if parametrical $queryString must not contain leading '&'
+	// ! $query should not contain 'api => kwdapi'
+	protected function apiLink($query = array()) {
+		if ($this->queryStringHierarchical) {
+			// ??? how combine logic with '$this->setApiQueryString'
+			$ret = $this->baseUrl.'/'.$this->apiName;
+			foreach($query as $k => $v) {
+				$ret .= ($k === self::HELP) ? '/'.self::HELP : '';
+				$ret .= ($k === self::CATEGORY_ID) ? '/'.self::CATEGORIES.'/'.$v : '';
+				$ret .= ($k === self::ARTICLE_ID) ? '/'.self::ARTICLES.'/'.$v : '';
+				// ??? CONTENTS vs. INCLUDES ...
+				// $ret .= ($k === self::CONTENTS) ? '/'.self::CONTENTS.'/'.$v : '';
+				if ($k === self::INCLUDES) {
+					$ret .= '/'.$k.'='.implode(',',$v);
+				}
+			}
+		}
+		// ??? use predefined arg_separator.output of php
+		else {
+			$ret =
+			$this->baseUrl
+			. '/index.php?api='.$this->apiName
+			.(count($query) ?  ini_get('arg_separator.output').http_build_query($query) : '');
+		}
 
-	protected function articleLink($article_id,$clang_id = 0,$showContent = false) {
-		return $this->apiLink(self::ARTICLES.'/'.$article_id.'/'.$clang_id.($showContent ? '/'.self::CONTENTS : ''));
-	}
-
-	protected function categoryLink($category_id, $clang_id = 0, $showArticles = false, $showContent = false) {
-		return $this->apiLink(self::CATEGORIES.'/'.$category_id.'/'.$clang_id.($showArticles ? '/'.self::ARTICLES : '').($showContent ? '/'.self::CONTENTS : ''));
+		return $ret;
 	}
 
 	//  --- API DATA GENERATION
@@ -424,8 +449,8 @@ abstract class kwd_jsonapi {
 		$response['request']= $this->queryRaw;
 		$response['error']['message'] = 'Syntax error or unknown request component';
 		$response['error'][self::HELP]['info'] = 'See links for entry point or help.';
-		$response['error'][self::HELP]['links'][] = $this->apiLink('');
-		$response['error'][self::HELP]['links'][] = $this->apiLink(self::HELP);
+		$response['error'][self::HELP]['links'][] = $this->apiLink();
+		$response['error'][self::HELP]['links'][] = $this->apiLink(array(self::HELP => 1));
 
 		$response['debug']['query'] = $this->getConfiguration();
 		$response['debug']['phpini_amp'] = ini_get('arg_separator.output');
@@ -441,9 +466,9 @@ abstract class kwd_jsonapi {
 		$response['request'] = $this->queryRaw; // ??? this line exists 3 times, how to make "DRY"?
 		$response['error']['message'] = 'Resource for this request not found. Probably you passed an id that does not exist.';
 		$response['error'][self::HELP]['info'] = 'Start with /api or /api/'.self::CATEGORIES;
-		$response['error'][self::HELP]['links'][] = $this->apiLink('');
-		$response['error'][self::HELP]['links'][] = $this->apiLink(self::CATEGORIES);
-		$response['error'][self::HELP]['links'][] = $this->apiLink(self::HELP);
+		$response['error'][self::HELP]['links'][] = $this->apiLink();
+		$response['error'][self::HELP]['links'][] = $this->apiLink(array(self::CATEGORY_ID => 0));
+		$response['error'][self::HELP]['links'][] = $this->apiLink(array(self::HELP => 1));
 		return $response;
 	}
 
@@ -488,10 +513,21 @@ abstract class kwd_jsonapi {
 				$response['request'] = $this->queryRaw; // sensible???
 				$response['debug']['query'] = $this->getConfiguration();
 
-				$content = false;
-				$continue = true;
+				if (isset($query[self::CLANG])) $clang_id = $query[self::CLANG]; // should always be preset
+				else $clang_id = $this->clangBase;
+
 				$showArticlesOfCategory = false;
+				$content = false;
 				$selectedCtype = 1;
+				if (isset($query[self::INCLUDES])) {
+					if (isset($query[self::INCLUDES][self::CONTENTS])) {
+						$content = true;
+						$selectedCtype = intval($query[self::INCLUDES][self::CONTENTS]);
+					};
+				}
+				else {
+					$query[self::INCLUDES] = array();
+				}
 
 				// if ($request[count($request) - 1] === self::CONTENTS) {
 				// 	$content = true;
@@ -520,29 +556,47 @@ abstract class kwd_jsonapi {
 					$response['info'] = 'You will get hierarchical "categories". A selected category will contain a list of its immediate sub categories and data of its related "articles" when requested. Please note: only categories or articles defined as "online" are shown. See the "examples" section of this response!';
 					$response['examples'] = array(
 						array(
-							'info' => 'Entry point, currently also provides "root categories"', 'link' => $this->apiLink('')
+							'info' => 'Entry point, currently also provides "root categories"', 'link' => $this->apiLink()
 						),
 						array(
 							'info' => 'Root "categories"',
-							'link' => $this->apiLink(self::CATEGORIES)
+							'link' => $this->apiLink(array(self::CATEGORY_ID => 0))
 						),
 						// ! currently disabled
 						// array('info' => 'Alternative entry point because no id specified', 'link' => $this->apiLink(self::ARTICLES)),
 						array(
 							'info' => 'A category selected by its ID (always contains immediate sub categories).',
-							'link' => $this->apiLink(self::CATEGORIES.'/3')
+							'link' => $this->apiLink(array(self::CATEGORY_ID => 3))
 						),
 						array(
 							'info' => 'A category selected by its ID and its language (clang).',
-							'link' => $this->apiLink(self::CATEGORIES.'/3/1')
+							'link' => $this->apiLink(array(self::CATEGORY_ID => 3, self::CLANG => 1))
 						),
 						array(
 							'info' => 'A category with list of "articles" (also articles in sub categories).',
-							'link' => $this->apiLink(self::CATEGORIES.'/3/0/articles')
+							'link' => $this->apiLink(array(
+								self::CATEGORY_ID => 3,
+								self::CLANG => 1,
+								self::INCLUDES => self::ARTICLES
+							))
 						),
 						array(
 							'info' => 'A category with articles and those bodies (compiled "article content").',
-							'link' => $this->apiLink(self::CATEGORIES.'/3/0/articles/contents')
+							'link' => $this->apiLink(array(
+								self::CATEGORY_ID => 3,
+								self::CLANG => 1,
+								self::INCLUDES => self::ARTICLES.','.self::CONTENTS
+							))
+								//self::CATEGORIES.'/3/0/articles/contents')
+						),
+						array(
+							'info' => 'A single article by id with its rendered contents',
+							// 'link' => $this->apiLink(self::ARTICLES.'/3/0/articles/contents')
+							'link' => $this->apiLink(array(
+								self::ARTICLE_ID => 2,
+								self::CLANG => 1,
+								self::INCLUDES => self::CONTENTS
+							))
 						)
 					);
 					$response['external']['info'] = 'Understand the basic concepts of "categories" and "articles":';
@@ -558,21 +612,22 @@ abstract class kwd_jsonapi {
 					// check articles from cat like categories/<id>/articles
 
 					// reject categories + contents without article
-					if (!isset($query[self::ARTICLE_ID]) && isset($query[self::INCLUDES][self::CONTENTS])) {
+					if (
+						!isset($query[self::INCLUDES][self::ARTICLES])
+						&& isset($query[self::INCLUDES][self::CONTENTS])
+					) {
 						$content = false;
-						$continue = false;
 						$response = $this->generateSyntaxError();
 						$response['error']['message'] = 'Semantic error. You cannot request "contents" without requesting "articles".';
 					}
 					else {
 
 						// include articles of all returned categories
-						if (isset($query[self::ARTICLE_ID])) $showArticlesOfCategory = true;
+						if (isset($query[self::INCLUDES][self::ARTICLES])) $showArticlesOfCategory = true;
 
 						$response['debug'][self::CONTENTS] = $content;
 						// set start cat id
 						$startCat = $query[self::CATEGORY_ID];
-						$clang_id = $query[self::CLANG]; // always preset
 						$kids = null;
 
 
@@ -584,7 +639,7 @@ abstract class kwd_jsonapi {
 
 							// ??? yet another sub func: for cat data
 
-							$response = array_merge($response,$this->getCategoryFields($cat,$clang_id));
+							$response = array_merge($response,$this->getCategoryFields($cat,$clang_id,$query[self::INCLUDES]));
 
 							// $response['id'] = $cat->getId();
 							// $response['name'] = $cat->getName();
@@ -596,7 +651,7 @@ abstract class kwd_jsonapi {
 
 							$response['info'] = 'You can use the ids or links in the list of root "categories".';
 							$response[self::HELP]['info'] = 'Check out the help section too!';
-							$response[self::HELP]['links'][] = $this->apiLink(self::HELP);
+							$response[self::HELP]['links'][] = $this->apiLink(array(self::HELP => 1));
 						}
 						else {
 							$response = $this->generateResourceNotFound();
@@ -605,7 +660,7 @@ abstract class kwd_jsonapi {
 
 						if ($kids && count($kids)) {
 							foreach($kids as $k) {
-								$catResponse = $this->getCategoryFields($k,$clang_id,$showArticlesOfCategory,$content);
+								$catResponse = $this->getCategoryFields($k,$clang_id,$query[self::INCLUDES]);
 
 								if ($showArticlesOfCategory) {
 									$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$selectedCtype);
@@ -648,13 +703,7 @@ abstract class kwd_jsonapi {
 					// certain article
 					if (intval($query[self::ARTICLE_ID])) {
 
-						//  ! dup code removed when requestBuilder function ready
-						if (isset($request[2])) {
-							$clang_id = intval($request[2]); // ! warning this may not work in redaxo 5.x
-						}
-						else $clang_id = 0;// ! warning this may not work in redaxo 5.x
-
-						$art = $this->getArticleById(intval($request[1]),$clang_id);
+						$art = $this->getArticleById(intval($query[self::ARTICLE_ID]),$clang_id);
 						// $art == null when id not found
 						if ($art) {
 							$response = array_merge($response, $this->addArticle($art,$content,$selectedCtype));
@@ -675,7 +724,7 @@ abstract class kwd_jsonapi {
 						$this->addHeader('HTTP/1.1 403 Forbidden');
 						$response[self::ERRORS]['message'] = 'Currently you can not request all articles without specifying an id';
 						$response[self::HELP]['info'] = 'You can travers categories starting by the entry point to find articles.';
-						$response[self::HELP]['links'][] = $this->apiLink('');
+						$response[self::HELP]['links'][] = $this->apiLink();
 					}
 				}
 
