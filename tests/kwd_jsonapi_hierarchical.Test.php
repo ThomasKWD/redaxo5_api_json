@@ -61,6 +61,8 @@ class mockRexEntity {
 	}
 }
 
+
+
 class mockRexArticle extends mockRexEntity {
 	private $_isStartArticle;
 	private $content;
@@ -198,21 +200,15 @@ class kwd_jsonapi_test extends kwd_jsonapi {
 
 }
 
-// TESTS
-// ==================================================================================================
-
 class KwdJsonApiTestCase extends TestCase {
-
-	// HELPERS
-	// ------------------------------------------------------------------------
 
  	function t() {
 		self::assertTrue(false,'test bool works');
 	}
 
-	private function getKwdapiResponseFromNew($queryString,$returnString = false) {
+	private function getResponseFromNew($queryString,$returnString = false) {
 		$jao = new kwd_jsonapi_test();
-		$jao->setApiQueryString('api=kwdapi&'.$queryString);
+		$jao->setApiQueryString(str_replace('/kwdapi/','api=',$queryString));
 		$response = $jao->buildResponse();
 		$json = json_decode($response);
 
@@ -220,6 +216,132 @@ class KwdJsonApiTestCase extends TestCase {
 		return $json;
 	}
 
+	private function getHeadersForResponseFromNew($queryString,$search = '') {
+		$jao = new kwd_jsonapi_test();
+		$jao->setApiQueryString(str_replace('/kwdapi/','api=',$queryString));
+		$jao->buildResponse();
+
+		return $jao->getHeaders();
+	}
+
+    public function testInitInConstructor() {
+		$jao = new kwd_jsonapi_test(); // default settings see test class declaration
+		// test the construct ... getConfiguration path
+		$conf = $jao->getConfiguration();
+		$this->assertArrayHasKey('requestMethod',$conf); // redundant because array indices used below
+		$this->assertSame($conf['requestMethod'],'get','request method must be valid case insensitive');
+		$this->assertSame('http://localhost/tk/kwd_website',$conf['baseUrl'],'baseUrl must eliminate trailing slashes');
+		$this->assertStringStartsWith('api=kwdapi',$conf['queryString'],'queryString must have "api="...');
+    }
+
+	public function testCorrectBaseUrl() {
+		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website','api=');
+		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost/tk/kwd_website');
+		$jao = new kwd_jsonapi_test('get','http','localhost2/tk/kwd_website/');
+		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost2/tk/kwd_website');
+		$jao = new kwd_jsonapi_test('get','http','localhost3/tk/kwd_website//');
+		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost3/tk/kwd_website');
+
+		// ... hope GC frees mem of all the 3 objects
+	}
+
+	public function testNoApiRequest() {
+		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website///','article_id=1&amp;clang=1');
+		$this->assertEquals($jao->buildResponse(),'','empty string is ok here');
+
+		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website','/');
+		$this->assertEquals($jao->buildResponse(),'','empty string is ok here');
+
+		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website','');
+		$this->assertEquals($jao->buildResponse(),'','empty string is ok here');
+	}
+
+	public function testCollectingHeadersSeparately() {
+		$jao = new kwd_jsonapi_test(); // default init
+		$accesControlOrigin = 'Access-Control-Allow-Origin: *';
+		// ??? add additional init because otherwise the array already filled
+		$this->assertSame($jao->getHeaders(),array(),'must be empty array because no response built');
+		$headers = $jao->addHeader('HTTP/1.0 403 Forbidden');
+		$headers = $jao->addHeader($accesControlOrigin);
+		$headers = $jao->addHeader('Content-Type: application/json; charset=UTF-8');
+		$this->assertCount(3,$jao->getHeaders(),'should insert 3 entries');
+		$this->assertEquals($jao->getHeaders()[0],'HTTP/1.0 403 Forbidden','sample check index 0');
+		$this->assertEquals($jao->getHeaders()[1],$accesControlOrigin,'sample check index 1');
+	}
+
+
+
+	///////////////////////////
+	// hierachical
+	// ///////////////////////
+	// - we could test parametrical at the same time (except input errors)
+
+	// first test convertion of uri
+	// because internally param syntax is used now
+
+
+	// /kwdapi/
+	// /kwdapi/categories
+	public function testConvertBasicHierarchicalSyntax() {
+		$jao = new kwd_jsonapi_test();
+
+		// /kwdapi/
+		$jao->setApiQueryString('kwdapi='); //  ! you must not start like "/kwdapi/..." because that's without a rewrite
+		$conf = $jao->getConfiguration();
+		$this->assertSame('kwdapi',$conf['queryStringHierarchical'],'contains only apiname because no slashes');
+		// !! could happen that order of parameters changes; still valid!
+		$this->assertSame('api=kwdapi&clang=1&category_id=0',$conf['queryString'],'must be equal to api request');
+
+		$data = $conf['queryData'];
+		$this->assertGreaterThan(1,$data,'array must have at least 3 elements');
+		$this->assertSame('kwdapi',$data['api'],'key must be equal to "api" and value to api name in array');
+		$this->assertEquals(0,$data['category_id'],'root must produce cat=0');
+
+
+		// /kwdapi/categories
+		$jao->setApiQueryString('kwdapi=categories'); //  ! you can not start lik "/kwdapi/..." because that's without rewrite
+		$conf = $jao->getConfiguration();
+
+		// produces some more because we already tried to parse clang etc.
+		$this->assertSame('category_id=0',strstr($conf['queryString'],'category_id=0'),'should NOT be same as input but parameters');
+
+		// - check an array build from string because order of parameters don't matter!
+		parse_str($conf['queryString'],$data);
+		$this->assertSame('kwdapi',$data['api'],'category_id in queryString');
+		$this->assertSame('0',$data['category_id'],'category_id in queryString');
+		$this->assertSame('1',$data['clang'],'category_id in queryString');
+
+		$this->assertSame('kwdapi/categories',$conf['queryStringHierarchical'],'should NOT be same as input but parameters');
+		// ! this is preset, not influenced by this request
+		$this->assertSame('kwdapi',$jao->getConfiguration()['apiName'],'api is named api until we can adjust it');
+
+		$data = $jao->getConfiguration()['queryData'];
+		$this->assertInternalType('array',$data,'"queryData" should be array');
+		$this->assertSame('kwdapi',$data['api'],'api name in array');
+		// $this->assertSame('api',$data['api'],'api name in array');
+		$this->assertSame(0,$data['category_id'],'category_id=0 in  data array');
+	}
+
+	// /kwdapi/categories/3
+	public function testConvertBasicHierchicalSyntaxWithCatId() {
+		// $jao = new
+	}
+
+	// /kwdapi/categories/3/0/articles/includes=contents,metainfos,slices
+	// = includes check conversion to parameter string
+	public function testConvertFullHierarchicalSyntaxToAssocArrayData() {
+
+	}
+
+	// api naming missing
+	public function testIgnoreApiOnBuildResponse() {
+		$jao = new kwd_jsonapi_test('GET','http','article_id=23','localhost');
+		$ret = $jao->buildResponse();
+		$this->assertTrue(is_string($ret));
+		$this->assertSame($ret,'','no API request must lead to empty string');
+	}
+
+	// ! helper used 2x
 	private function runCodeForTestingRootCats($jao) {
 
 		$response = $jao->buildResponse();
@@ -252,74 +374,40 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertTrue(!isset($cat1->articles),'field "articles"(array) must NOT be there');
 	}
 
-	// TESTS
-	// ------------------------------------------------------------------------
-
-    public function testInitInConstructor() {
-		$jao = new kwd_jsonapi_test(); // default settings see test class declaration
-		// test the construct ... getConfiguration path
-		$conf = $jao->getConfiguration();
-		$this->assertArrayHasKey('requestMethod',$conf); // redundant because array indices used below
-		$this->assertSame($conf['requestMethod'],'get','request method must be valid case insensitive');
-		$this->assertSame('http://localhost/tk/kwd_website',$conf['baseUrl'],'baseUrl must eliminate trailing slashes');
-		$this->assertStringStartsWith('api=kwdapi',$conf['queryString'],'queryString must have "api="...');
-    }
-
-	public function testCorrectBaseUrl() {
-		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website','api=');
-		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost/tk/kwd_website');
-		$jao = new kwd_jsonapi_test('get','http','localhost2/tk/kwd_website/');
-		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost2/tk/kwd_website');
-		$jao = new kwd_jsonapi_test('get','http','localhost3/tk/kwd_website//');
-		$this->assertSame($jao->getConfiguration()['baseUrl'],'http://localhost3/tk/kwd_website');
-
-		// ... hope GC frees mem of all the 3 objects
-	}
-
-	public function testNoApiRequest() {
-		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website///','article_id=1&amp;clang=1');
-		$this->assertEquals('',$jao->buildResponse(),'empty string is ok here');
-
-		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website','/');
-		$this->assertEquals($jao->buildResponse(),'','empty string is ok here');
-
-		$jao = new kwd_jsonapi_test('get','http','localhost/tk/kwd_website','');
-		$this->assertEquals($jao->buildResponse(),'','empty string is ok here');
-	}
-
-	public function testCollectingHeadersSeparately() {
-		$jao = new kwd_jsonapi_test(); // default init
-		$accesControlOrigin = 'Access-Control-Allow-Origin: *';
-		// ??? add additional init because otherwise the array already filled
-		$this->assertSame($jao->getHeaders(),array(),'must be empty array because no response built');
-		$headers = $jao->addHeader('HTTP/1.0 403 Forbidden');
-		$headers = $jao->addHeader($accesControlOrigin);
-		$headers = $jao->addHeader('Content-Type: application/json; charset=UTF-8');
-		$this->assertCount(3,$jao->getHeaders(),'should insert 3 entries');
-		$this->assertEquals($jao->getHeaders()[0],'HTTP/1.0 403 Forbidden','sample check index 0');
-		$this->assertEquals($jao->getHeaders()[1],$accesControlOrigin,'sample check index 1');
-	}
-
-	// api naming missing
-	public function testIgnoreApiOnBuildResponse() {
-		$jao = new kwd_jsonapi_test('GET','http','article_id=23','localhost');
-		$ret = $jao->buildResponse();
-		$this->assertTrue(is_string($ret));
-		$this->assertSame('',$ret,'no API request must lead to empty string');
-	}
-
-
 	// /kwdapi
 	public function testGenerateResponseForEntryPoint() {
 		$jao = new kwd_jsonapi_test();
 		$this->runCodeForTestingRootCats($jao);
 	}
 
+	// /kwdapi/0/ is not allowd
+	// public function testLanguage0OnEntryPoint() {
+	// 	$json = $this->getResponseFromNew('kwdapi=0');
+	// 	// $this->assertSame('',$json,'error entry must be existent');
+	// 	$this->assertTrue(isset($json->error),'error entry must be existent');
+	// }
+
+	// /kwdapi/1/ must be invalid
+	public function testLanguage1OnEntryPoint() {
+		$json = $this->getResponseFromNew('kwdapi=1');
+		$this->assertTrue(is_object($json->error));
+	}
+
+	// /kwdapi/categories
 	public function testGenerateResponseForRootCategories() {
 		$jao = new kwd_jsonapi_test();
-		$jao->setApiQueryString('api=kwdapi&category_id=0');
+		$jao->setApiQueryString('kwdapi=categories');
 		$this->runCodeForTestingRootCats($jao);
 	}
+
+	// ! now with trailing slash
+	// /kwdapi/categories/
+	public function testGenerateResponseForRootCategoriesWithTrailingSlash() {
+		$jao = new kwd_jsonapi_test();
+		$jao->setApiQueryString('kwdapi=categories/');
+		$this->runCodeForTestingRootCats($jao);
+	}
+
 
 	// ! following tests are reduced thus rely on more detailed checks above
 
@@ -328,7 +416,7 @@ class KwdJsonApiTestCase extends TestCase {
 
 		// TODO: make helper function for this 4 lines:
 		$jao = new kwd_jsonapi_test();
-		$jao->setApiQueryString('api=kwdapi&category_id=3');
+		$jao->setApiQueryString('kwdapi=categories/3');
 
 		$response = $jao->buildResponse();
 		$json = json_decode($response);
@@ -372,12 +460,12 @@ class KwdJsonApiTestCase extends TestCase {
 
 	// /kwdapi/categories/3/0 must be valid but not found
 	public function testLanguage0NotFound() {
-		$jao = new kwd_jsonapi_test();
-		$jao->setApiQueryString('categories/3/0');
-		$json = json_encode($jao->buildResponse());
+		$json = $this->getResponseFromNew('kwdapi=categories/3/0');
+		// TODO: how to test received headers?
 		$this->assertTrue(isset($json->error),'should have error element');
-		$headers = $jao->getHeaders();
+		$headers = $this->getHeadersForResponseFromNew('kwdapi=categories/3/1');
 		$this->assertContains('HTTP/1.1 404 Not Found',$headers,'must contain HTTP 404 header');
+		// $this->markTestIncomplete('why clang=0 not recognized in setApiQueryString???');
 	}
 
 	// /kwdapi/categories/3/2 must be valid but not found
@@ -541,8 +629,4 @@ class KwdJsonApiTestCase extends TestCase {
 
 	// ! with different api name
 	// /alternative_api/categories/3/articles
-
-	// with slices=all|show
-	// with ctype=<id>
-	// with offlines=true|1
 }

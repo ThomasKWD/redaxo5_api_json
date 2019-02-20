@@ -46,10 +46,10 @@ Just try your Redaxo project URI with `/api`. It provides an entry point and sug
 
 `yourdomain.tld/api/categories/3/articles` returns category with ID == 3 and all articles in it and in its sub categories.
 
-`yourdomain.tld/api/categories/3/articles/contents` ***returns "article content" of ctype 2 of all articles found.
-`yourdomain.tld/api/categories/3/articles/contents/2` ****returns "article content" of ctype 2 of all articles found.
-`yourdomain.tld/api/categories/3/articles/metainfos` **returns "article content" of ctype 2 of all articles found.
-`yourdomain.tld/api/categories/3/articles/slices` **returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/contents` returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/contents/2` returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/metainfos` returns "article content" of ctype 2 of all articles found.
+`yourdomain.tld/api/categories/3/articles/slices` returns "article content" of ctype 2 of all articles found.
 
 `yourdomain.tld/api/articles/48/` returns a single "article".
 `yourdomain.tld/api/articles/48/contents` returns a single "article".
@@ -274,25 +274,10 @@ Example response made from "https://www.kuehne-webdienste.de/api/categories/3/0/
 
 Note: This example has been copied from an formatter for better readability. The actual response **has** quoted field names and escaped slashes.
 
+## Implementation
 
-# JSON API addon for Redaxo 5
+### Branch "parametric_only"
 
-Redaxo **5.x** addon to provide a read only JSON api for category and article content.
+Trying to discard all of "hierarchical request" logic. But this should be preserved in copied versions of code (rather than branch).
 
-## Description
-
-This addon works identical to the Redaxo 4.x version "redaxo4_api_json" except that it can only be installed under Redaxo 5.x.
-
-Please read the [README there](https://github.com/ThomasKWD/redaxo4_api_json/blob/master/README.md)!
-
-## Requirements
-
-### Software
-
-* PHP 7.1
-* Redaxo 5.x (Only tested with Redaxo 5.6.0)
-* Mod Rewrite access (optional).
-
-## Know issues
-
-* In some situations the output may not work together with addons which use the "OUTPUT_FILTER" (e.g. "[SPROG](https://github.com/tbaddade/redaxo_sprog)". That means, SPROG's replacements may not be done for the json output.
+Then we could maybe add "hierarchical request" again as additional feature. 

@@ -11,12 +11,6 @@
 
 <p>Keine Einstellungsmöglichkeiten.</p>
 
-
-
-
-
-
-
 <p>Weitere Details und Code unter: <a href="https://github.com/ThomasKWD/redaxo5_api_json">github.com/ThomasKWD/redaxo5_api_json</a></p>
 
 
