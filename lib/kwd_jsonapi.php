@@ -571,7 +571,7 @@ abstract class kwd_jsonapi {
 				if (isset($query[self::CONTENTS])) {
 					$content = true;
 				}
-				if (isset($query[self::CTYPE]))	$selectedCtype = intval($query[CTYPE]);
+				if (isset($query[self::CTYPE]))	$selectedCtype = intval($query[self::CTYPE]);
 
 				// includes are: contents, ctype, metainfos, slices, articles
 				$includesForLink = array();

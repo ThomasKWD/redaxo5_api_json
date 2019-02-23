@@ -436,7 +436,7 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertEquals('Shuri Ryu Berlin_article',$art1->name,'should have article name');
 		$this->assertEquals(12,$art1->id);
 		$this->assertSame(1,$art1->startpage,'should be set as "start article"');
-		$this->assertContains('&category_id=12&clang=1&includes%5Barticles%5D=1',$cat1->link,'should have parametrical link to categories[0]');
+		$this->assertContains('&category_id=12&clang=1&articles=1',$cat1->link,'should have parametrical link to categories[0]');
 	}
 
 	function testProvidesLinkToArticlesInList() {
@@ -447,7 +447,7 @@ class KwdJsonApiTestCase extends TestCase {
 	//  ! must be invalid because need '.../articles'
 	function testRequestCategoryWithContentBadRequest() {
 		$jao = new kwd_jsonapi_test();
-		$jao->setApiQueryString('kwdapi=categories/3/contents');
+		$jao->setApiQueryString('api=kwdapi&category_id=3&contents=1');
 		$response = $jao->buildResponse();
 		$json = json_decode($response);
 		$headers = $jao->getHeaders();
@@ -535,7 +535,7 @@ class KwdJsonApiTestCase extends TestCase {
 	}
 
 	function testRequestSingleArticleWithContentSetTo0() {
-		$json = $this->getKwdApiResponseFromNew('article_id=48&includes=contents');
+		$json = $this->getKwdApiResponseFromNew('article_id=48&contents=0');
 	 	$this->assertFalse(isset($json->articles),'must not have sub articles');
 		$this->assertSame(48,$json->id,'must have id unequal to its cat');
 		$this->assertSame(3,$json->parent_id,'must have re_id; unequal to its cat');
@@ -549,6 +549,7 @@ class KwdJsonApiTestCase extends TestCase {
 		$json = $this->getKwdApiResponseFromNew('article_id=3');
 		$this->assertFalse(isset($json->error),'must NOT have "error" because  valid');
 	}
+
 
 	// /kwdapi/categories/48/articles/
 	// ! this currently works but is *wrong*
