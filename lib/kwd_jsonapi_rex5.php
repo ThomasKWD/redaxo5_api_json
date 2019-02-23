@@ -28,7 +28,6 @@ class kwd_jsonapi_rex5 extends kwd_jsonapi {
 	/** returns url with corrected start/ending
 	*	- It is not absolutely certain that rex::getServer() always includes the protool ('http:')
 	*   - although usually it does
-	*	- that's why we check this,
 	*	- as well as the trailing slash which we need.
 	*/
 	function cleanUrl($url) {

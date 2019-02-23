@@ -17,6 +17,7 @@ abstract class kwd_jsonapi {
 	const INCLUDES = 'includes';
 	const CONTENTS = 'contents';
 	const METAINFOS = 'metainfos';
+	const CTYPE = 'ctype';
 	const SLICES = 'slices';
 	const OFFLINES = 'offlines';
 
@@ -25,6 +26,8 @@ abstract class kwd_jsonapi {
 	const CATEGORY_ID = 'category_id';
 	const ARTICLE_ID = 'article_id';
 	const CLANG = 'clang';
+
+	const DEBUG = 'debug';
 
 	protected $clangBase = 1;
 	protected $requestMethod = '';
@@ -37,6 +40,9 @@ abstract class kwd_jsonapi {
 
 	protected $headers = array(); // indexed array
 
+	protected $debugMode = false;
+	protected $debugOutput = array();
+
 	abstract protected function getRootCategories($ignore_offlines = false,$clang = 0);
 	abstract protected function getCategoryById($id, $clang = 0);
 	abstract protected function getRootArticles($ignore_offlines = false,$clang = 0);
@@ -46,6 +52,14 @@ abstract class kwd_jsonapi {
 	function __construct($requestMethod = 'get', $requestScheme = 'http', $serverPath = '/', $queryString = '', $newClangBase = 1) {
 		$this->clangBase = $newClangBase;
 		$this->init($requestMethod, $requestScheme, $serverPath, $queryString);
+	}
+
+	protected function debug($fieldName, $value) {
+		$this->debugOutput[$fieldName] = $value;
+	}
+
+	function setDebugMode($mode = true) {
+		$this->debugMode = $mode ? true : false;
 	}
 
 	/** adds header to list
@@ -110,9 +124,11 @@ abstract class kwd_jsonapi {
 
 		$isParametric = false;
 
+
 		// string must not contain '/' when parameters
 		// string must not contain '&' when structured
 		if (strstr($q,'&') === false && strpos($q,self::APIMARKER.'=') !== 0) {
+			// ??? FIRST make parametrical from hierarchical, THEN it is easier to perform checks over parameters built
 
 			// sometimes a parameter query goes here when only 1 entry like "api=kwdapi"
 			if ($q === self::APIMARKER .'='. $this->apiName) $isParametric = true;
@@ -141,7 +157,9 @@ abstract class kwd_jsonapi {
 
 			// finds contents at end
 			if (count($r) > 3 && $r[count($r) - 2] === self::CONTENTS && is_numeric($r[count($r) - 1])) {
-				$data[self::INCLUDES][self::CONTENTS] = $r[count($r)-1];
+				// $data[self::INCLUDES][self::CONTENTS] = $r[count($r)-1];
+				$data[self::INCLUDES][self::CONTENTS] = 1;
+				$data[self::INCLUDES][self::CTYPE] = $r[count($r)-1];
 				array_pop($r);
 				array_pop($r);
 			}
@@ -225,22 +243,41 @@ abstract class kwd_jsonapi {
 			if ($data === false) {
 				$data = array();
 			}
-			// add root categories to entry point
-			else if(count($data) === 1) {
-				$data[self::CATEGORY_ID] = 0;
-			}
 			else {
-				// we want to split up includes and moveto sub array
-				if (isset($data[self::INCLUDES])) {
-					$temp = explode(',',$data[self::INCLUDES]);
-					$data[self::INCLUDES] = array();
-					foreach($temp as $i) {
-						$data[self::INCLUDES][$i] = 1; // make assoc sub array
+
+				// add root categories to entry point
+				if(count($data) === 1) {
+					$data[self::CATEGORY_ID] = 0;
+				}
+				else {
+					// we want to split up includes and move to parent query array
+					if (isset($data[self::INCLUDES])) {
+						$temp = explode(',',$data[self::INCLUDES]);
+						foreach($temp as $i) {
+							$data[$i] = 1; // make assoc sub array
+						}
 					}
-					// ??? how define contents=3 (for ctype)
-					// ??? use ctype=1
+
+					// TODO: must add articles to includes auto when requested article_id
+
+					// ! fields directly coming from param (not includes) overwrite includes
+
+					// - contents=0 removed
+					// - ctype created from contents
+					if (isset($data[self::CONTENTS]) && intval($data[self::CONTENTS])) {
+						$data[self::CTYPE] = $data[self::CONTENTS];
+					}
+					else unset($data[self::CONTENTS]);
+
+					if (isset($data[self::CTYPE])) {
+						$data[self::CONTENTS] = 1;
+						$data[self::CTYPE] = intval($data[self::CTYPE]);
+					}
+
 				}
 
+				// always a clang
+				if (!isset($data[self::CLANG]))	$data[self::CLANG] = $this->clangBase;
 			}
 		}
 
@@ -286,6 +323,7 @@ abstract class kwd_jsonapi {
 		return $this->headers = $headersArray;
 	}
 
+	// ??? process metainfos, ctypes
 	protected function getCategoryFields($cat, $clang_id = 1, $includes = array()) {
 		$id = $cat->getId();
 		// $entry['id'] = $id;
@@ -295,11 +333,11 @@ abstract class kwd_jsonapi {
 
 		$entry = $this->getMetaInfos($cat,null);
 
-		$a = array (
+		$a = array_merge(array(
 			self::CATEGORY_ID => $id,
-			self::CLANG => $clang_id,
-			self::INCLUDES => $includes // ??? does sub array work??
-		);
+			self::CLANG => $clang_id
+		),$includes);
+
 
 		$entry['link'] = $this->apiLink($a);
 
@@ -389,6 +427,13 @@ abstract class kwd_jsonapi {
 
 		if ($content) $res['body'] = $this->getArticleContent($art->getId(), $art->getClang(), $ctype_id);
 
+		$res['link'] = $this->apiLink(array(
+			self::ARTICLE_ID => $art->getId(),
+			self::CLANG => $art->getClang(),
+			self::CONTENTS => $content,
+			self::CTYPE => $ctype_id
+		));
+
 		return $res;
 	}
 
@@ -412,11 +457,9 @@ abstract class kwd_jsonapi {
 				$ret .= ($k === self::HELP) ? '/'.self::HELP : '';
 				$ret .= ($k === self::CATEGORY_ID) ? '/'.self::CATEGORIES.'/'.$v : '';
 				$ret .= ($k === self::ARTICLE_ID) ? '/'.self::ARTICLES.'/'.$v : '';
-				// ??? CONTENTS vs. INCLUDES ...
-				// $ret .= ($k === self::CONTENTS) ? '/'.self::CONTENTS.'/'.$v : '';
-				if ($k === self::INCLUDES) {
-					$ret .= '/'.$k.'='.implode(',',$v);
-				}
+				// if ($k === self::INCLUDES) {
+				// 	$ret .= '/'.$k.'='.implode(',',$v);
+				// }
 			}
 		}
 		// ??? use predefined arg_separator.output of php
@@ -452,8 +495,7 @@ abstract class kwd_jsonapi {
 		$response['error'][self::HELP]['links'][] = $this->apiLink();
 		$response['error'][self::HELP]['links'][] = $this->apiLink(array(self::HELP => 1));
 
-		$response['debug']['query'] = $this->getConfiguration();
-		$response['debug']['phpini_amp'] = ini_get('arg_separator.output');
+		$this->debug('query',$this->getConfiguration());
 
 		return $response;
 	}
@@ -486,6 +528,11 @@ abstract class kwd_jsonapi {
 		// - just avoid reg exp when possible
 		if (count($query)) {
 
+			// ??? make static helper: checks isset AND value of field of array // not working because then already reference to it needed
+			if (isset($query[self::DEBUG]) && $query[self::DEBUG]) {
+				$this->setDebugMode();
+			}
+
 			// $api = $this->queryStringHierarchical; // ! as long as parameters not working
 
 			// !only allow GET
@@ -511,7 +558,7 @@ abstract class kwd_jsonapi {
 				// first remove entries which may come from leading/trailing slashes "/":
 
 				$response['request'] = $this->queryRaw; // sensible???
-				$response['debug']['query'] = $this->getConfiguration();
+				$this->debug('query',$this->getConfiguration());
 
 				if (isset($query[self::CLANG])) $clang_id = $query[self::CLANG]; // should always be preset
 				else $clang_id = $this->clangBase;
@@ -519,35 +566,19 @@ abstract class kwd_jsonapi {
 				$showArticlesOfCategory = false;
 				$content = false;
 				$selectedCtype = 1;
-				if (isset($query[self::INCLUDES])) {
-					if (isset($query[self::INCLUDES][self::CONTENTS])) {
-						$content = true;
-						$selectedCtype = intval($query[self::INCLUDES][self::CONTENTS]);
-					};
-				}
-				else {
-					$query[self::INCLUDES] = array();
-				}
 
-				// if ($request[count($request) - 1] === self::CONTENTS) {
-				// 	$content = true;
-				// 	array_pop($request);
-				// }
-				//
-				// // with ctype def
-				// else if (count($request) >= 3 && $request[count($request) - 2] === self::CONTENTS) {
-				// 	$c = $request[count($request) - 1];
-				// 	if (is_numeric($c)) {
-				// 		$selectedCtype = intval($c);
-				// 		$content = true;
-				// 		array_pop($request);
-				// 		array_pop($request);
-				// 	}
-				// 	else {
-				// 		// should send bad request here
-				// 		// ??? maybe flag for bad request, then continue not needed below!
-				// 	}
-				// }
+				// CONTENTS, and CTYPE preprocessed by $this->setApiQueryString
+				if (isset($query[self::CONTENTS])) {
+					$content = true;
+				}
+				if (isset($query[self::CTYPE]))	$selectedCtype = intval($query[CTYPE]);
+
+				// includes are: contents, ctype, metainfos, slices, articles
+				$includesForLink = array();
+				if (isset($query[self::CONTENTS])) $includesForLink[self::CONTENTS] = $query[self::CONTENTS];
+				if (isset($query[self::CTYPE])) $includesForLink[self::CTYPE] = $query[self::CTYPE];
+				if (isset($query[self::ARTICLES])) $includesForLink[self::ARTICLES] = $query[self::ARTICLES];
+				if (isset($query[self::SLICES])) $includesForLink[self::SLICES] = $query[self::SLICES];
 
 				// help section
 				// -----------------------
@@ -577,7 +608,7 @@ abstract class kwd_jsonapi {
 							'link' => $this->apiLink(array(
 								self::CATEGORY_ID => 3,
 								self::CLANG => 1,
-								self::INCLUDES => self::ARTICLES
+								self::ARTICLES => 1
 							))
 						),
 						array(
@@ -585,7 +616,8 @@ abstract class kwd_jsonapi {
 							'link' => $this->apiLink(array(
 								self::CATEGORY_ID => 3,
 								self::CLANG => 1,
-								self::INCLUDES => self::ARTICLES.','.self::CONTENTS
+								self::ARTICLES => 1,
+								self::CONTENTS => 1
 							))
 								//self::CATEGORIES.'/3/0/articles/contents')
 						),
@@ -595,7 +627,7 @@ abstract class kwd_jsonapi {
 							'link' => $this->apiLink(array(
 								self::ARTICLE_ID => 2,
 								self::CLANG => 1,
-								self::INCLUDES => self::CONTENTS
+								self::CONTENTS => 1
 							))
 						)
 					);
@@ -613,8 +645,8 @@ abstract class kwd_jsonapi {
 
 					// reject categories + contents without article
 					if (
-						!isset($query[self::INCLUDES][self::ARTICLES])
-						&& isset($query[self::INCLUDES][self::CONTENTS])
+						!isset($query[self::ARTICLES])
+						&& isset($query[self::CONTENTS])
 					) {
 						$content = false;
 						$response = $this->generateSyntaxError();
@@ -623,9 +655,9 @@ abstract class kwd_jsonapi {
 					else {
 
 						// include articles of all returned categories
-						if (isset($query[self::INCLUDES][self::ARTICLES])) $showArticlesOfCategory = true;
+						if (isset($query[self::ARTICLES])) $showArticlesOfCategory = true;
 
-						$response['debug'][self::CONTENTS] = $content;
+						$this->debug(self::CONTENTS,$content);
 						// set start cat id
 						$startCat = $query[self::CATEGORY_ID];
 						$kids = null;
@@ -639,7 +671,7 @@ abstract class kwd_jsonapi {
 
 							// ??? yet another sub func: for cat data
 
-							$response = array_merge($response,$this->getCategoryFields($cat,$clang_id,$query[self::INCLUDES]));
+							$response = array_merge($response,$this->getCategoryFields($cat,$clang_id,$includesForLink));
 
 							// $response['id'] = $cat->getId();
 							// $response['name'] = $cat->getName();
@@ -655,12 +687,12 @@ abstract class kwd_jsonapi {
 						}
 						else {
 							$response = $this->generateResourceNotFound();
-							$response['debug']['info'] = 'getCategoryById '.$startCat. ' failed';
+							$this->debug('info','getCategoryById '.$startCat. ' failed');
 						}
 
 						if ($kids && count($kids)) {
 							foreach($kids as $k) {
-								$catResponse = $this->getCategoryFields($k,$clang_id,$query[self::INCLUDES]);
+								$catResponse = $this->getCategoryFields($k,$clang_id,$includesForLink);
 
 								if ($showArticlesOfCategory) {
 									$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$selectedCtype);
@@ -740,14 +772,14 @@ abstract class kwd_jsonapi {
 			}
 		}
 
-		// ! comment line if you need debug
-		// DEBUG:
-		// unset($response['debug']);
 		$this->addHeader('Content-Type: application/json; charset=UTF-8',false);
+
+		if ($this->debugMode) {
+			$response[self::DEBUG] = $this->debugOutput;
+		}
 
 		// ! we don't exit if response could not been build
 		// ! usually this allows to show normal start page of Redaxo project.
-
 		// ??? include headers in return value?
 		if (count($response)) return json_encode($response);
 		return '';
