@@ -29,7 +29,7 @@ class kwd_jsonapi_rex5 extends kwd_jsonapi {
 
 		$sql = rex_sql::factory();
 		$sql->setQuery(
-			'SELECT * FROM rex_article_slice WHERE `article_id`='.$article_id
+			'SELECT * FROM '.rex::getTablePrefix().'article_slice WHERE `article_id`='.$article_id
 			.($revision === self::ALL ? '' : ' AND `revision`='.intval($revision))
 			.' AND `clang_id`='.$clang
 			.' AND `ctype_id`='.$ctype

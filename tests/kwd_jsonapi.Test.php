@@ -472,6 +472,7 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertEquals('Shuri Ryu Berlin_article',$art1->name,'should have article name');
 		$this->assertEquals(12,$art1->id);
 		$this->assertSame(1,$art1->startpage,'should be set as "start article"');
+		
 		$this->assertContains('&category_id=12&clang=1&articles=1',$cat1->link,'should have parametrical link to categories[0]');
 	}
 

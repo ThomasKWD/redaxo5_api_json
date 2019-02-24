@@ -1,7 +1,6 @@
 # Ignore all test and documentation with “export-ignore”.
-.gitattributes export-ignore
+# .gitattributes export-ignore
 .gitignore export-ignore
 composer.json export-ignore
-composer.lock
+composer.lock export-ignore
 tests/ export-ignore
-vendor/ export-ignore

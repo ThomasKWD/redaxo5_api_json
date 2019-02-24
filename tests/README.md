@@ -4,7 +4,7 @@ removed call to local phpunit installation (was `phpunit.bat ./` which pointed t
 
 ## Note!
 
-To speed up tests and perform unit tests and integration at the same run I use a present Redaxo 4.7.2 installation reachable under http://localhost/tk/kwd-website. Hence some _tests cannot be run without this Redaxo_
+Integration tests are done in docker image composement against the installation of the default "Redaxo Demo v."
 
 Use [test.sh](./test.sh) for independent unit test (May fail because mock objects are incomplete).
 Use [api_test.sh](./api_test.sh) for integration test (May fail because Redaxo not reachable under localhost OR not containing the expected content).
@@ -17,6 +17,4 @@ Using the docker images from https://github.com/FriendsOfREDAXO/redaxo-mit-docke
 
 "Composer" is not installed in the docker image. You must add it and build a new image "redaxo-docker_web" or use a local installation.
 
-## Did you know?
-
-Press Crtl+Shift+m to show preview of md file.
+I currently use a modified container image. Workdir: project root, downloaded compose.phar, executed `php composer.phar install`. Seems to work with php version found in docker image.
