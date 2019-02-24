@@ -27,6 +27,11 @@ abstract class kwd_jsonapi {
 	const ARTICLE_ID = 'article_id';
 	const CLANG = 'clang';
 
+	const ALL = 'all';
+	const VALUES_IN_SLICE = 20;
+	// const SLICE_VALUES = 'values';
+	// const SLICE_LINKS = 'values';
+
 	const DEBUG = 'debug';
 
 	protected $clangBase = 1;
@@ -48,6 +53,7 @@ abstract class kwd_jsonapi {
 	abstract protected function getRootArticles($ignore_offlines = false,$clang = 0);
 	abstract protected function getArticleById($id,$clang = 0);
 	abstract protected function getArticleContent($article_id,$clang = 0,$ctype = 1);
+	abstract protected function getSlicesForCtype($article_id,$clang = 0, $ctype = 1, $revision = false);
 
 	function __construct($requestMethod = 'get', $requestScheme = 'http', $serverPath = '/', $queryString = '', $newClangBase = 1) {
 		$this->clangBase = $newClangBase;
@@ -483,14 +489,14 @@ abstract class kwd_jsonapi {
 		return array_values(array_filter(explode('/',trim($string))));
 	}
 
-	protected function generateSyntaxError() {
+	protected function generateSyntaxError($msg = '') {
 
 		$response = [];
 
 		// articles/categories not found
 		$this->addHeader('HTTP/1.1 400 Bad Request');
 		$response['request']= $this->queryRaw;
-		$response['error']['message'] = 'Syntax error or unknown request component';
+		$response['error']['message'] = $msg ? $msg : 'Syntax error or unknown request component';
 		$response['error'][self::HELP]['info'] = 'See links for entry point or help.';
 		$response['error'][self::HELP]['links'][] = $this->apiLink();
 		$response['error'][self::HELP]['links'][] = $this->apiLink(array(self::HELP => 1));
@@ -500,13 +506,13 @@ abstract class kwd_jsonapi {
 		return $response;
 	}
 
-	protected function generateResourceNotFound() {
+	protected function generateResourceNotFound($customMessage = '') {
 		$response;
 
 		$this->addHeader("HTTP/1.1 404 Not Found");
 
 		$response['request'] = $this->queryRaw; // ??? this line exists 3 times, how to make "DRY"?
-		$response['error']['message'] = 'Resource for this request not found. Probably you passed an id that does not exist.';
+		$response['error']['message'] = 'Resource for this request not found. '. ($customMessage ? $customMessage : 'Probably you passed an id that does not exist.');
 		$response['error'][self::HELP]['info'] = 'Start with /api or /api/'.self::CATEGORIES;
 		$response['error'][self::HELP]['links'][] = $this->apiLink();
 		$response['error'][self::HELP]['links'][] = $this->apiLink(array(self::CATEGORY_ID => 0));
@@ -565,15 +571,16 @@ abstract class kwd_jsonapi {
 
 				$showArticlesOfCategory = false;
 				$content = false;
-				$selectedCtype = 1;
+				$ctype_id = 1;
 
 				// CONTENTS, and CTYPE preprocessed by $this->setApiQueryString
 				if (isset($query[self::CONTENTS])) {
 					$content = true;
 				}
-				if (isset($query[self::CTYPE]))	$selectedCtype = intval($query[self::CTYPE]);
+				if (isset($query[self::CTYPE]))	$ctype_id = intval($query[self::CTYPE]);
 
 				// includes are: contents, ctype, metainfos, slices, articles
+				// ! contents is pre-parsed by $this->setApiQueryString hence has value >0 or is unset
 				$includesForLink = array();
 				if (isset($query[self::CONTENTS])) $includesForLink[self::CONTENTS] = $query[self::CONTENTS];
 				if (isset($query[self::CTYPE])) $includesForLink[self::CTYPE] = $query[self::CTYPE];
@@ -695,7 +702,7 @@ abstract class kwd_jsonapi {
 								$catResponse = $this->getCategoryFields($k,$clang_id,$includesForLink);
 
 								if ($showArticlesOfCategory) {
-									$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$selectedCtype);
+									$catResponse[self::ARTICLES] = $this->addAllArticlesOfCategory($k,$content,$ctype_id);
 								}
 								$response[self::CATEGORIES][] = $catResponse;
 							}
@@ -711,13 +718,13 @@ abstract class kwd_jsonapi {
 						// ??? must be loop for all in cat!!!!!!
 						if ($showArticlesOfCategory) {
 							if ($cat)  {
-								$response[self::ARTICLES] = $this->addAllArticlesOfCategory($cat,$content,$selectedCtype);
+								$response[self::ARTICLES] = $this->addAllArticlesOfCategory($cat,$content,$ctype_id);
 							}
 							else if (!$startCat) {
 								$artRes = [];
 								$arts = $this->getRootArticles(true,$clang_id);
 								foreach($arts as $art) {
-									$artRes[] = $this->addArticle($art,$content,$selectedCtype); // TODO: wrong usage of $content
+									$artRes[] = $this->addArticle($art,$content,$ctype_id); // TODO: wrong usage of $content
 								}
 								// - could insert if to prevent empty array
 								// ! can be empty array because *all* root articles could be offline (not depending on cat)
@@ -730,19 +737,41 @@ abstract class kwd_jsonapi {
 				// article without category to refer to
 				// ------------------------------------
 
-				else if (isset($query[self::ARTICLE_ID])) {
+				else if (!empty($query[self::ARTICLE_ID])) {
 
 					// certain article
-					if (intval($query[self::ARTICLE_ID])) {
+					$article_id = intval($query[self::ARTICLE_ID]);
+					if ($article_id) {
 
 						$art = $this->getArticleById(intval($query[self::ARTICLE_ID]),$clang_id);
 						// $art == null when id not found
 						if ($art) {
-							$response = array_merge($response, $this->addArticle($art,$content,$selectedCtype));
+							$response = array_merge($response, $this->addArticle($art,$content,$ctype_id));
 						}
 						else {
 							// not found
 							$response = $this->generateResourceNotFound();
+						}
+
+						// allow request slices only here
+						if (isset($query[self::SLICES])) {
+
+							$revision = false;
+							if (is_numeric($query[self::SLICES])) $revision = intval($query[self::SLICES]);
+							else if ($query[self::SLICES] === self::ALL) $revision = self::ALL;
+
+							$sliceData = array();
+
+							if ($revision !== false) {
+								$sliceData = $this->getSlicesForCtype($article_id,$clang_id,$ctype_id,$revision);
+							}
+
+							if (count($sliceData)) {
+								$response[self::SLICES] = $sliceData;
+							}
+							else {
+								$response = $this->generateResourceNotFound('Invalid value for slices.');
+							}
 						}
 					}
 					// ! commented out because clang always allowed
@@ -759,15 +788,20 @@ abstract class kwd_jsonapi {
 						$response[self::HELP]['links'][] = $this->apiLink();
 					}
 				}
-
-				else {
-					$response = $this->generateSyntaxError();
+				else if (isset($query[self::SLICES])) {
+					$response = $this->generateSyntaxError('You must select an "article" to get "slices".');
 					// // articles/categories not found
 					// $this->addHeader('HTTP/1.1 400 Bad Request');
 					// $response['error']['message'] = 'Syntax error or unknown request component';
 					// $response['error'][self::HELP]['info'] = 'See links for entry point or help.';
 					// $response['error'][self::HELP]['links'][] = $this->apiLink('');
 					// $response['error'][self::HELP]['links'][] = $this->apiLink(self::HELP);
+				}
+				else if (isset($query[self::ARTICLE_ID])) {
+					$response = $this->generateResourceNotFound('Currently you cannot request all articles. Please query an id or an "category" which can contain articles.');
+				}
+				else {
+					$response = $this->generateSyntaxError();
 				}
 			}
 		}

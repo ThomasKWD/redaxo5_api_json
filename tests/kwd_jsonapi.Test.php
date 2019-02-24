@@ -137,6 +137,8 @@ class mockRexCategory extends mockRexEntity {
 	}
 }
 
+
+
 // need an extra derived class
 class kwd_jsonapi_test extends kwd_jsonapi {
 
@@ -199,6 +201,40 @@ class kwd_jsonapi_test extends kwd_jsonapi {
 		return "<p>Demo Content for id=$article_id, clang=$clang, ctype=$ctype</p>";
 	}
 
+	/** return array of slices for an article
+	*	! currently mocked in this function directly
+	*	- only knows revision = 0 or 'all'
+	*/
+	function getSlicesForCtype($article_id, $clang = 1, $ctype = 1, $revision = self::ALL) {
+
+		if (
+			($revision !== self::ALL && $revision !== 0)
+			|| $clang > 1
+			|| $ctype !== 1
+		)
+		return array();
+
+		return ( array(
+			array(
+				'id' => "2",
+				'clang_id' => "1",
+				'ctype_id' => "2",
+				'priority' => "1",
+				'value1' => "Konzept",
+				'value2' => "Das Prinzip entscheidet.",
+				'revision' => "0"
+			),
+			array (
+				'id' => "3",
+				'clang_id' => "1",
+				'ctype_id' => "2",
+				'priority' => "2",
+				'value1' => "Design",
+				'value2' => "Design ist mehr als Layout und Gestaltung.",
+				'revision' => "0"
+			)
+		));
+	}
 }
 
 // TESTS
@@ -522,7 +558,7 @@ class KwdJsonApiTestCase extends TestCase {
 	function testRequestAllArticles() {
 		$json = $this->getKwdApiResponseFromNew('article_id=0');
 		$this->assertTrue(isset($json->error),'must have "error" because cannot list ALL articles');
-		$this->assertContains('can not request all articles',$json->error->message,'must have sensible error message/type');
+		$this->assertContains('cannot request all articles',$json->error->message,'must have sensible error message/type');
 	}
 
 	// /kwdapi/articles/48/contents
@@ -550,18 +586,15 @@ class KwdJsonApiTestCase extends TestCase {
 		$this->assertFalse(isset($json->error),'must NOT have "error" because  valid');
 	}
 
-
-	// /kwdapi/categories/48/articles/
-	// ! this currently works but is *wrong*
-	// ! id of art/cat mismatch because article id is output as category id because of the getFields.. simplific.
-
-	//
-	function testAllCategoryDataFields() {
-		self::markTestIncomplete('check createdate ...');
+	function testRequestSlicesWithoutArticleId() {
+		$json = $this->getKwdApiResponseFromNew('slices=all');
+		self::assertContains('select an "article" to get "slices"',$json->error->message,'error msg must explain that article id needed');
 	}
 
-
-	// important: test: index.php?api=kwdapi&category_id=1
+	function testGetSlicesForSingleArticleByArticleId() {
+		$json = $this->getKwdApiResponseFromNew('article_id=3&slices=all');
+		self::assertInternalType('array',$json->slices,'slices must be array');
+	}
 
 
 	// /kwdapi/categories/3/meta

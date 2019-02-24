@@ -25,6 +25,20 @@ class kwd_jsonapi_rex5 extends kwd_jsonapi {
 		return (new rex_article_content($article_id,$clang))->getArticle($ctype);  // hard coded ctype 1
 	}
 
+	protected function getSlicesForCtype($article_id,$clang = 1, $ctype = 1, $revision = self::ALL) {
+
+		$sql = rex_sql::factory();
+		$sql->setQuery(
+			'SELECT * FROM rex_article_slice WHERE `article_id`='.$article_id
+			.($revision === self::ALL ? '' : ' AND `revision`='.intval($revision))
+			.' AND `clang_id`='.$clang
+			.' AND `ctype_id`='.$ctype
+			.' ORDER BY `priority` ASC'
+		);
+
+		return $sql->getArray();
+	}
+
 	/** returns url with corrected start/ending
 	*	- It is not absolutely certain that rex::getServer() always includes the protool ('http:')
 	*   - although usually it does
